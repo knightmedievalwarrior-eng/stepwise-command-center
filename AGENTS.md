@@ -16,3 +16,4 @@
 - Command routing is local-first: `src/lib/intent.ts` decides command vs question; only questions go to `/api/chat` (streaming AI route in `src/server/ai/`).
 - Bot execution goes through `src/lib/runner.ts` (`startRun` callbacks); swap its internals for an n8n webhook/stream later without touching the UI.
 - Completing a run must call `finishTask`, which deletes the task data and records the history entry in one step.
+- AI chat replies render via Streamdown without the mermaid plugin; mermaid's graphlib/dagre chunks caused a blank screen in production builds.
