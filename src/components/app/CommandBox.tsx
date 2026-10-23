@@ -143,7 +143,7 @@ export function CommandBox() {
           />
           <PromptInputFooter className="justify-between px-3 pb-3">
             <span className="flex items-center gap-1.5 pl-1 text-xs text-muted-foreground">
-              <CornerDownLeft className="size-3.5" /> Enter เพื่อส่ง · คำสั่งเปิดงานทันที · คำถามตอบด้วย AI
+              <CornerDownLeft className="size-3.5" /> Enter เพื่อส่ง<span className="hidden sm:inline"> · คำสั่งเปิดงานทันที · คำถามตอบด้วย AI</span>
             </span>
             <PromptInputSubmit
               status={status}
