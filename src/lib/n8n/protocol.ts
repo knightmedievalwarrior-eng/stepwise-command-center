@@ -13,9 +13,9 @@
  */
 
 export type RunEvent =
-  | { kind: "step"; index: number; status: "running" | "success"; message?: string }
-  | { kind: "error"; index?: number; message: string }
-  | { kind: "done"; message?: string }
+  | { kind: "step"; index: number; status: "running" | "success"; message?: string | undefined }
+  | { kind: "error"; index?: number | undefined; message: string }
+  | { kind: "done"; message?: string | undefined }
   | { kind: "log"; message: string }
   | { kind: "text"; text: string };
 
