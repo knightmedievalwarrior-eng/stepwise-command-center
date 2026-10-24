@@ -1,10 +1,21 @@
 /**
  * Execution engine for the bot pipeline.
  *
- * Today this simulates each step locally in the browser. To connect n8n
- * later, replace `startRun` with a call to an n8n webhook and stream its
- * step events (SSE / polling) into the same `RunHandlers` callbacks.
+ * Two engines share the same callbacks:
+ *  - "n8n": POSTs the Thai payload straight from the browser to the user's
+ *    n8n webhook and reads step events from the (optionally streamed) reply.
+ *  - "simulate": local demo used while no webhook is configured.
  */
+import { buildPayload } from "./n8n/payload";
+import type { N8nConfig } from "./n8n/config";
+import {
+  applyEvent,
+  createJsonSplitter,
+  initialProgress,
+  normalize,
+  type RunEvent,
+  type StepProgress,
+} from "./n8n/protocol";
 import {
   TASKS,
   calcQuotation,
@@ -18,7 +29,7 @@ import {
   type TaskType,
 } from "./tasks/definitions";
 
-export type LogLevel = "info" | "success" | "warn" | "system";
+export type LogLevel = "info" | "success" | "warn" | "error" | "system";
 
 export interface LogLine {
   id: number;
@@ -29,16 +40,188 @@ export interface LogLine {
 
 export interface RunHandlers {
   onLog: (line: LogLine) => void;
-  onStep: (index: number) => void;
-  onProgress: (percent: number) => void;
+  onProgress: (p: StepProgress) => void;
   onDone: () => void;
+  onError: (failure: { index: number; message: string }) => void;
 }
 
 export interface RunControl {
+  canPause: boolean;
   pause: () => void;
   resume: () => void;
   cancel: () => void;
 }
+
+export interface RunTask {
+  id: string;
+  type: TaskType;
+  data: TaskData;
+}
+
+export type RunMode = "n8n" | "simulate";
+
+export interface RunOptions {
+  mode: RunMode;
+  config?: N8nConfig;
+  runId: string;
+  speed?: number;
+}
+
+function makeLogger(h: RunHandlers) {
+  let seq = 0;
+  return (level: LogLevel, message: string) => h.onLog({ id: ++seq, at: Date.now(), level, message });
+}
+
+/* ------------------------------------------------------------------ */
+/* n8n engine                                                          */
+/* ------------------------------------------------------------------ */
+
+function startN8n(task: RunTask, h: RunHandlers, config: N8nConfig, runId: string): RunControl {
+  const labels = TASKS[task.type].pipeline;
+  const total = labels.length;
+  const log = makeLogger(h);
+  const abort = new AbortController();
+  let progress = initialProgress(total);
+  let cancelled = false;
+  let textBuf = "";
+
+  const flushText = (force = false) => {
+    const parts = textBuf.split("\n");
+    textBuf = force ? "" : (parts.pop() ?? "");
+    for (const p of force ? parts : parts) if (p.trim()) log("info", `  ↳ ${p.trim()}`);
+  };
+
+  const apply = (ev: RunEvent) => {
+    if (cancelled || progress.finished) return;
+    if (ev.kind === "text") {
+      textBuf += ev.text;
+      flushText();
+      return;
+    }
+    if (ev.kind === "log") {
+      log("info", `  ↳ ${ev.message}`);
+      return;
+    }
+    const before = progress;
+    progress = applyEvent(progress, ev);
+    if (ev.kind === "step") {
+      const label = labels[Math.min(ev.index, total - 1)];
+      if (ev.status === "running") log("info", `[${ev.index + 1}/${total}] ${label}…`);
+      if (ev.message) log("info", `  ↳ ${ev.message}`);
+      if (ev.status === "success") log("success", `✓ ${label}`);
+    }
+    if (ev.kind === "error" && progress.failed) {
+      const i = progress.failed.index;
+      log("error", `✗ ขั้นตอน ${i + 1}/${total} ${labels[i]} — ${ev.message}`);
+    }
+    if (ev.kind === "done" && ev.message) log("info", `  ↳ ${ev.message}`);
+    if (before !== progress) h.onProgress(progress);
+  };
+
+  const fail = (message: string) => {
+    apply({ kind: "error", message });
+    if (progress.failed) h.onError(progress.failed);
+  };
+
+  void (async () => {
+    log("system", `ส่งคำสั่งไป n8n · ${safeHost(config.url)} · ${total} ขั้นตอน`);
+    h.onProgress(progress);
+    log("info", `[1/${total}] ${labels[0]}…`);
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/x-ndjson, application/json, text/plain",
+    };
+    if (config.authHeader && config.authValue) headers[config.authHeader] = config.authValue;
+
+    let res: Response;
+    try {
+      res = await fetch(config.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(buildPayload(task, runId)),
+        signal: abort.signal,
+      });
+    } catch {
+      if (cancelled) return;
+      return fail("เชื่อมต่อ n8n ไม่ได้ — ตรวจสอบ URL, เปิดใช้งาน workflow และตั้ง Allowed Origins (CORS) ใน Webhook node");
+    }
+    if (cancelled) return;
+    log("system", `n8n ตอบกลับ HTTP ${res.status}`);
+
+    const splitter = createJsonSplitter();
+    const handleChunk = (chunk: string) => {
+      for (const value of splitter.push(chunk)) normalize(value, labels).forEach(apply);
+    };
+
+    try {
+      if (res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (cancelled) return;
+          if (done) break;
+          handleChunk(decoder.decode(value, { stream: true }));
+        }
+        handleChunk(decoder.decode());
+      } else {
+        handleChunk(await res.text());
+      }
+    } catch {
+      if (cancelled) return;
+      return fail("การเชื่อมต่อกับ n8n ขาดระหว่างทำงาน");
+    }
+    flushText(true);
+    const rest = splitter.rest();
+
+    if (progress.failed) return h.onError(progress.failed);
+
+    if (!res.ok) {
+      const detail = rest ? ` · ${rest.slice(0, 200)}` : "";
+      const reason =
+        res.status === 401 || res.status === 403
+          ? "n8n ปฏิเสธสิทธิ์ (ตรวจสอบ Header Auth)"
+          : res.status === 404
+            ? "ไม่พบ Webhook (workflow ยังไม่ได้ Publish หรือ URL ผิด)"
+            : `n8n ตอบกลับข้อผิดพลาด HTTP ${res.status}`;
+      return fail(reason + detail);
+    }
+
+    if (rest) log("info", `  ↳ ${rest.slice(0, 300)}`);
+    if (!progress.finished) {
+      if (progress.completed === 0) {
+        log("warn", "n8n ไม่ได้ส่งสถานะรายขั้นตอน — ถือว่าสำเร็จเมื่อรับคำสั่งแล้ว");
+      }
+      for (let i = progress.completed; i < total; i++) apply({ kind: "step", index: i, status: "success" });
+      apply({ kind: "done" });
+    }
+    log("system", "ภารกิจเสร็จสมบูรณ์ · ลบข้อมูลชั่วคราวออกจากเบราว์เซอร์");
+    h.onDone();
+  })();
+
+  return {
+    canPause: false,
+    pause: () => {},
+    resume: () => {},
+    cancel: () => {
+      cancelled = true;
+      abort.abort();
+    },
+  };
+}
+
+function safeHost(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Simulation engine (no webhook configured)                           */
+/* ------------------------------------------------------------------ */
 
 function detailsFor(type: TaskType, step: number, data: TaskData): string[] {
   if (type === "quotation") {
@@ -49,7 +232,7 @@ function detailsFor(type: TaskType, step: number, data: TaskData): string[] {
       [`ยอดก่อนส่วนลด ${formatBaht(t.subtotal)}`, `VAT ${formatBaht(t.vat)} · ยอดสุทธิ ${formatBaht(t.total)}`],
       ["จองเลขที่เอกสารสำเร็จ"],
       [`ยืนราคา ${readNumber(data, "validDays") || 30} วัน`, "เรนเดอร์เทมเพลตเสร็จสิ้น"],
-      ["webhook ตอบกลับ 200 OK (จำลอง)"],
+      ["ส่งเข้าระบบสำเร็จ (จำลอง)"],
     ][step] ?? [];
   }
   if (type === "customer") {
@@ -68,41 +251,45 @@ function detailsFor(type: TaskType, step: number, data: TaskData): string[] {
   ][step] ?? [];
 }
 
-export function startRun(type: TaskType, data: TaskData, h: RunHandlers, speed = 1): RunControl {
-  const pipeline = TASKS[type].pipeline;
-  let seq = 0;
+function startSimulation(task: RunTask, h: RunHandlers, speed: number): RunControl {
+  const pipeline = TASKS[task.type].pipeline;
+  const total = pipeline.length;
+  const log = makeLogger(h);
+  let progress = initialProgress(total);
   let paused = false;
   let cancelled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const log = (level: LogLevel, message: string) => h.onLog({ id: ++seq, at: Date.now(), level, message });
+  const step = (ev: RunEvent) => {
+    progress = applyEvent(progress, ev);
+    h.onProgress(progress);
+  };
 
-  // Flatten the pipeline into timed events.
   type Ev = { delay: number; run: () => void };
   const events: Ev[] = [];
-  const total = pipeline.length;
-  events.push({ delay: 200, run: () => log("system", `เชื่อมต่อบอทหลังบ้าน · ${total} ขั้นตอน`) });
+  events.push({ delay: 200, run: () => log("system", `โหมดจำลอง (ยังไม่ได้ตั้งค่า n8n) · ${total} ขั้นตอน`) });
   pipeline.forEach((label, i) => {
     events.push({
       delay: 350,
       run: () => {
-        h.onStep(i);
+        step({ kind: "step", index: i, status: "running" });
         log("info", `[${i + 1}/${total}] ${label}…`);
       },
     });
-    for (const d of detailsFor(type, i, data)) {
+    for (const d of detailsFor(task.type, i, task.data)) {
       events.push({ delay: 550 + Math.random() * 450, run: () => log("info", `  ↳ ${d}`) });
     }
     events.push({
       delay: 400,
       run: () => {
         log("success", `✓ ${label}`);
-        h.onProgress(Math.round(((i + 1) / total) * 100));
+        step({ kind: "step", index: i, status: "success" });
       },
     });
   });
   events.push({
     delay: 300,
     run: () => {
+      step({ kind: "done" });
       log("system", "ภารกิจเสร็จสมบูรณ์ · ลบข้อมูลชั่วคราวออกจากเบราว์เซอร์");
       h.onDone();
     },
@@ -120,10 +307,11 @@ export function startRun(type: TaskType, data: TaskData, h: RunHandlers, speed =
       tick();
     }, ev.delay / speed);
   };
-  h.onProgress(0);
+  h.onProgress(progress);
   tick();
 
   return {
+    canPause: true,
     pause: () => {
       if (paused || cancelled) return;
       paused = true;
@@ -141,4 +329,9 @@ export function startRun(type: TaskType, data: TaskData, h: RunHandlers, speed =
       if (timer) clearTimeout(timer);
     },
   };
+}
+
+export function startRun(task: RunTask, h: RunHandlers, opts: RunOptions): RunControl {
+  if (opts.mode === "n8n" && opts.config?.url) return startN8n(task, h, opts.config, opts.runId);
+  return startSimulation(task, h, opts.speed ?? 1);
 }
