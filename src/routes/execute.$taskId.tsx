@@ -1,12 +1,22 @@
-import { Navigate, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Check, Loader2, Pause, Play, Square, Terminal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Link, Navigate, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { AlertTriangle, Check, Loader2, Pause, Pencil, Play, RotateCcw, Square, Terminal, Webhook, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 
+import { N8nSettingsDialog } from "@/components/app/N8nSettingsDialog";
 import { MissingTask } from "@/components/app/TaskGate";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { startRun, type LogLine, type RunControl } from "@/lib/runner";
-import { finishTask, useHydrated, useTask, type Task } from "@/lib/session-store";
+import { percent, statusLabel } from "@/lib/n8n/protocol";
+import {
+  cancelRun,
+  dismissRun,
+  launchRun,
+  pauseRun,
+  resumeRun,
+  useRun,
+  type LiveRun,
+} from "@/lib/run-store";
+import { updateTask, useHydrated, useTask, type Task } from "@/lib/session-store";
 import { TASKS } from "@/lib/tasks/definitions";
 import { cn } from "@/lib/utils";
 
@@ -14,9 +24,9 @@ export const Route = createFileRoute("/execute/$taskId")({
   head: () => ({
     meta: [
       { title: "Real-Time Execution — บอทกำลังทำงาน" },
-      { name: "description", content: "ติดตามสถานะบอทหลังบ้านแบบเรียลไทม์ พร้อม Progress และ Log ทีละขั้น" },
+      { name: "description", content: "ติดตามสถานะบอท n8n แบบเรียลไทม์ พร้อม Progress และ Log ทีละขั้น" },
       { property: "og:title", content: "Real-Time Execution — บอทกำลังทำงาน" },
-      { property: "og:description", content: "Progress bar และ Log การทำงานทีละขั้น" },
+      { property: "og:description", content: "Progress bar และ Log การทำงานทีละขั้นจาก n8n" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -27,88 +37,81 @@ export const Route = createFileRoute("/execute/$taskId")({
 function ExecutePage() {
   const { taskId } = Route.useParams();
   const hydrated = useHydrated();
-  const live = useTask(taskId);
-  // Freeze the task: its data is destroyed the moment the run finishes.
-  const [snap, setSnap] = useState<Task | null>(null);
-  useEffect(() => {
-    if (live && !snap) setSnap(live);
-  }, [live, snap]);
+  const task = useTask(taskId);
+  const run = useRun(taskId);
 
-  if (!hydrated || (live && !snap)) {
-    return (
-      <div className="mx-auto max-w-4xl space-y-4 px-4 py-10 sm:px-6">
-        <Skeleton className="h-8 w-1/2" />
-        <Skeleton className="h-96 w-full rounded-2xl" />
-      </div>
-    );
-  }
-  const task = snap ?? live;
+  if (!hydrated) return <LoadingView />;
+  if (run) return <Execution run={run} />;
   if (!task) return <MissingTask />;
-  if (task.status !== "ready") return <Navigate to="/review/$taskId" params={{ taskId }} replace />;
-  return <Execution task={task} />;
+  // A previous run failed or was interrupted (e.g. page reload): never resend
+  // automatically — let the user check the data and confirm again.
+  if (task.status !== "ready" || task.lastRun) {
+    return <Navigate to="/review/$taskId" params={{ taskId }} replace />;
+  }
+  return <Launcher task={task} />;
 }
 
-type Phase = "running" | "paused" | "done";
+function LoadingView() {
+  return (
+    <div className="mx-auto max-w-4xl space-y-4 px-4 py-10 sm:px-6">
+      <Skeleton className="h-8 w-1/2" />
+      <Skeleton className="h-96 w-full rounded-2xl" />
+    </div>
+  );
+}
 
-function Execution({ task }: { task: Task }) {
+function Launcher({ task }: { task: Task }) {
+  useEffect(() => {
+    launchRun(task);
+  }, [task]);
+  return <LoadingView />;
+}
+
+function Execution({ run }: { run: LiveRun }) {
   const navigate = useNavigate();
-  const def = TASKS[task.type];
-  const [logs, setLogs] = useState<LogLine[]>([]);
-  const [current, setCurrent] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [phase, setPhase] = useState<Phase>("running");
-  const [entryId, setEntryId] = useState<string | null>(null);
-  const control = useRef<RunControl | null>(null);
-  const startedAt = useRef(Date.now());
+  const def = TASKS[run.type];
+  const total = def.pipeline.length;
   const logBox = useRef<HTMLDivElement>(null);
+  const { progress, phase } = run;
+  const pct = percent(progress);
+  const failedIndex = run.failure?.index;
 
   useEffect(() => {
-    setLogs([]);
-    startedAt.current = Date.now();
-    control.current = startRun(task.type, task.data, {
-      onLog: (l) => setLogs((prev) => [...prev, l]),
-      onStep: setCurrent,
-      onProgress: setProgress,
-      onDone: () => {
-        setPhase("done");
-        setCurrent(def.pipeline.length);
-        const entry = finishTask(task.id, "success", startedAt.current, def.pipeline.length);
-        if (entry) setEntryId(entry.id);
-      },
-    });
-    return () => control.current?.cancel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task.id]);
-
-  useEffect(() => {
-    if (!entryId) return;
-    const t = setTimeout(() => void navigate({ to: "/done/$entryId", params: { entryId } }), 1400);
+    if (phase !== "done" || !run.entryId) return;
+    const entryId = run.entryId;
+    const t = setTimeout(() => {
+      dismissRun(run.taskId);
+      void navigate({ to: "/done/$entryId", params: { entryId } });
+    }, 1400);
     return () => clearTimeout(t);
-  }, [entryId, navigate]);
+  }, [phase, run.entryId, run.taskId, navigate]);
 
   useEffect(() => {
     const el = logBox.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [logs]);
-
-  const togglePause = () => {
-    if (phase === "running") {
-      control.current?.pause();
-      setPhase("paused");
-    } else if (phase === "paused") {
-      control.current?.resume();
-      setPhase("running");
-    }
-  };
+  }, [run.logs.length]);
 
   const cancel = () => {
-    control.current?.cancel();
-    finishTask(task.id, "cancelled", startedAt.current, current);
-    void navigate({ to: "/review/$taskId", params: { taskId: task.id } });
+    cancelRun(run.taskId);
+    void navigate({ to: "/review/$taskId", params: { taskId: run.taskId } });
   };
 
-  const statusText =
-    phase === "done" ? "เสร็จสมบูรณ์" : phase === "paused" ? "หยุดชั่วคราว" : def.pipeline[current] ?? "กำลังเตรียม…";
+  const retry = () => {
+    // Clear the failure first so the next render mounts the Launcher (fresh run)
+    // instead of redirecting to review.
+    updateTask(run.taskId, { lastRun: undefined });
+    dismissRun(run.taskId);
+  };
+
+  const editData = () => {
+    dismissRun(run.taskId);
+    void navigate({ to: "/review/$taskId", params: { taskId: run.taskId } });
+  };
+
+  const active = phase === "running" || phase === "paused";
+  const currentLabel = def.pipeline[progress.current] ?? "";
+  const headline =
+    phase === "paused" ? `หยุดชั่วคราว (${progress.current + 1}/${total})` : statusLabel(progress);
 
   return (
     <div className="mx-auto max-w-5xl px-4 pb-24 pt-8 sm:px-6 sm:pt-12">
@@ -121,25 +124,30 @@ function Execution({ task }: { task: Task }) {
                 phase === "running" && "animate-pulse-dot bg-signal",
                 phase === "paused" && "bg-warning",
                 phase === "done" && "bg-success",
+                phase === "error" && "bg-destructive",
               )}
             />
-            Real-Time Execution
+            Real-Time Execution · {run.mode === "n8n" ? "n8n" : "โหมดจำลอง"}
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">บอทกำลัง{def.title}</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+            {phase === "error" ? `${def.title}ไม่สำเร็จ` : `บอทกำลัง${def.title}`}
+          </h1>
         </div>
-        {phase !== "done" && (
+        {active && (
           <div className="flex gap-2">
-            <Button variant="outline" onClick={togglePause}>
-              {phase === "paused" ? (
-                <>
-                  <Play /> ทำต่อ
-                </>
-              ) : (
-                <>
-                  <Pause /> หยุดชั่วคราว
-                </>
-              )}
-            </Button>
+            {run.canPause && (
+              <Button variant="outline" onClick={() => (phase === "paused" ? resumeRun(run.taskId) : pauseRun(run.taskId))}>
+                {phase === "paused" ? (
+                  <>
+                    <Play /> ทำต่อ
+                  </>
+                ) : (
+                  <>
+                    <Pause /> หยุดชั่วคราว
+                  </>
+                )}
+              </Button>
+            )}
             <Button variant="ghost" onClick={cancel}>
               <Square /> ยกเลิก
             </Button>
@@ -147,32 +155,89 @@ function Execution({ task }: { task: Task }) {
         )}
       </div>
 
+      {/* Error banner */}
+      {phase === "error" && run.failure && (
+        <div
+          role="alert"
+          className="mt-6 animate-in fade-in slide-in-from-top-1 rounded-2xl border border-destructive/40 bg-destructive/10 p-4 sm:p-5"
+        >
+          <div className="flex items-start gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground">
+              <AlertTriangle className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-destructive">
+                ขัดข้องที่ขั้นตอน {run.failure.index + 1}/{total}: {run.failure.label}
+              </p>
+              <p className="mt-1 break-words text-sm text-foreground/80">{run.failure.message}</p>
+              <p className="mt-2 text-xs text-muted-foreground">ข้อมูลงานยังอยู่ในงานค้าง แก้ไขหรือส่งใหม่ได้</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" variant="destructive" onClick={retry}>
+                  <RotateCcw /> ลองส่งใหม่
+                </Button>
+                <Button size="sm" variant="outline" onClick={editData}>
+                  <Pencil /> ตรวจทาน / แก้ไขข้อมูล
+                </Button>
+                <N8nSettingsDialog
+                  trigger={
+                    <Button size="sm" variant="ghost">
+                      <Webhook /> ตั้งค่า n8n
+                    </Button>
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Progress */}
-      <div className="surface mt-8 p-5 sm:p-7">
+      <div className="surface mt-6 p-5 sm:p-7">
         <div className="flex items-baseline justify-between gap-4">
-          <p className="text-sm text-muted-foreground" aria-live="polite">
-            {statusText}
-          </p>
+          <div className="min-w-0" aria-live="polite">
+            <p className={cn("text-base font-semibold", phase === "error" && "text-destructive")}>{headline}</p>
+            <p className="mt-0.5 truncate text-sm text-muted-foreground">
+              {phase === "done" ? "ทุกขั้นตอนเสร็จแล้ว" : phase === "error" ? run.failure?.label : currentLabel}
+            </p>
+          </div>
           <p className="font-mono text-4xl font-semibold tabular-nums tracking-tight sm:text-5xl">
-            {progress}
+            {pct}
             <span className="text-xl text-muted-foreground">%</span>
           </p>
         </div>
         <div
-          className="mt-4 h-3 overflow-hidden rounded-full bg-secondary"
+          className="mt-4 flex h-3 gap-1"
           role="progressbar"
-          aria-valuenow={progress}
+          aria-valuenow={pct}
           aria-valuemin={0}
           aria-valuemax={100}
+          aria-valuetext={headline}
         >
-          <div
-            className={cn(
-              "h-full rounded-full transition-[width] duration-500 ease-out",
-              phase === "done" ? "bg-success" : "progress-stripes bg-signal",
-              phase === "running" && "animate-stripes",
-            )}
-            style={{ width: `${Math.max(progress, 2)}%` }}
-          />
+          {def.pipeline.map((label, i) => {
+            const done = i < progress.completed;
+            const failed = i === failedIndex;
+            const current = !done && !failed && i === progress.current && active;
+            return (
+              <div key={label} className="relative flex-1 overflow-hidden rounded-full bg-secondary" title={label}>
+                <div
+                  className={cn(
+                    "absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ease-out",
+                    done && (phase === "done" ? "bg-success" : "bg-signal"),
+                    failed && "bg-destructive",
+                    current && "progress-stripes bg-signal/70",
+                    current && phase === "running" && "animate-stripes",
+                  )}
+                  style={{ width: done || failed ? "100%" : current ? "45%" : "0%" }}
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex justify-between font-mono text-[0.65rem] text-muted-foreground">
+          <span>
+            {progress.completed}/{total} ขั้นตอนเสร็จ
+          </span>
+          <span>{run.mode === "n8n" ? `→ ${run.target}` : "ยังไม่ได้เชื่อม n8n"}</span>
         </div>
       </div>
 
@@ -180,33 +245,44 @@ function Execution({ task }: { task: Task }) {
         {/* Step checklist */}
         <ol className="surface space-y-1 p-3">
           {def.pipeline.map((label, i) => {
-            const done = i < current || phase === "done";
-            const active = i === current && phase !== "done";
+            const done = i < progress.completed;
+            const failed = i === failedIndex;
+            const current = !done && !failed && i === progress.current && active;
             return (
               <li
                 key={label}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
-                  active && "bg-signal-soft",
+                  current && "bg-signal-soft",
+                  failed && "bg-destructive/10",
                 )}
               >
                 <span
                   className={cn(
                     "flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-[0.7rem]",
                     done && "border-success bg-success text-success-foreground",
-                    active && "border-signal text-signal",
-                    !done && !active && "border-border text-muted-foreground",
+                    failed && "border-destructive bg-destructive text-destructive-foreground",
+                    current && "border-signal text-signal",
+                    !done && !current && !failed && "border-border text-muted-foreground",
                   )}
                 >
                   {done ? (
                     <Check className="size-3.5" />
-                  ) : active && phase === "running" ? (
+                  ) : failed ? (
+                    <X className="size-3.5" />
+                  ) : current && phase === "running" ? (
                     <Loader2 className="size-3.5 animate-spin" />
                   ) : (
                     i + 1
                   )}
                 </span>
-                <span className={cn(!done && !active && "text-muted-foreground", active && "font-medium")}>
+                <span
+                  className={cn(
+                    !done && !current && !failed && "text-muted-foreground",
+                    current && "font-medium",
+                    failed && "font-medium text-destructive",
+                  )}
+                >
                   {label}
                 </span>
               </li>
@@ -220,14 +296,14 @@ function Execution({ task }: { task: Task }) {
             <span className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
               <Terminal className="size-3.5" /> execution.log
             </span>
-            <span className="font-mono text-[0.65rem] text-muted-foreground">{logs.length} lines</span>
+            <span className="font-mono text-[0.65rem] text-muted-foreground">{run.logs.length} lines</span>
           </div>
           <div
             ref={logBox}
             className="h-[340px] overflow-y-auto bg-log px-4 py-3 font-mono text-[0.78rem] leading-6 text-log-foreground"
             aria-live="polite"
           >
-            {logs.map((l) => (
+            {run.logs.map((l) => (
               <div key={l.id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-1 duration-300">
                 <span className="shrink-0 text-muted-foreground">
                   {new Date(l.at).toLocaleTimeString("th-TH", { hour12: false })}
@@ -237,6 +313,7 @@ function Execution({ task }: { task: Task }) {
                     "min-w-0 whitespace-pre-wrap break-words",
                     l.level === "success" && "text-success",
                     l.level === "warn" && "text-warning",
+                    l.level === "error" && "font-medium text-destructive",
                     l.level === "system" && "text-signal",
                   )}
                 >
@@ -246,11 +323,32 @@ function Execution({ task }: { task: Task }) {
             ))}
             {phase === "running" && <span className="inline-block h-4 w-2 animate-pulse bg-foreground/60 align-middle" />}
           </div>
-          <p className="border-t border-border px-4 py-2 text-[0.7rem] text-muted-foreground">
-            โหมดจำลอง · พร้อมเชื่อมต่อ n8n webhook ในอนาคต
-          </p>
+          <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-[0.7rem] text-muted-foreground">
+            <span className="truncate">
+              {run.mode === "n8n"
+                ? `ส่งตรงจากเบราว์เซอร์ไป n8n · ${run.target}`
+                : "โหมดจำลอง · ตั้งค่า Webhook เพื่อส่งงานไป n8n จริง"}
+            </span>
+            {phase !== "error" && (
+              <N8nSettingsDialog
+                trigger={
+                  <button type="button" className="shrink-0 underline-offset-2 hover:text-foreground hover:underline">
+                    ตั้งค่า n8n
+                  </button>
+                }
+              />
+            )}
+          </div>
         </div>
       </div>
+
+      {phase === "error" && (
+        <div className="mt-6 text-center">
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/">กลับ Command Center</Link>
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

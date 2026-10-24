@@ -1,12 +1,15 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Pencil, Rocket, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Pencil, Rocket, ShieldCheck, Webhook } from "lucide-react";
 import { useState } from "react";
 
+import { N8nSettingsDialog } from "@/components/app/N8nSettingsDialog";
 import { StepRail } from "@/components/app/StepRail";
 import { TaskGate } from "@/components/app/TaskGate";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { useN8nConfig, webhookHost } from "@/lib/n8n/config";
+import { dismissRun } from "@/lib/run-store";
 import { updateTask, type Task } from "@/lib/session-store";
 import {
   TASKS,
@@ -57,6 +60,8 @@ function Review({ task }: { task: Task }) {
   const navigate = useNavigate();
   const def = TASKS[task.type];
   const [confirmed, setConfirmed] = useState(false);
+  const n8n = useN8nConfig();
+  const last = task.lastRun;
   const invalidStep = def.steps.findIndex((s) => Object.keys(validateStep(s, task.data)).length > 0);
 
   const edit = (i: number) => {
@@ -66,7 +71,8 @@ function Review({ task }: { task: Task }) {
 
   const submit = () => {
     if (invalidStep >= 0) return edit(invalidStep);
-    updateTask(task.id, { status: "ready" });
+    dismissRun(task.id);
+    updateTask(task.id, { status: "ready", lastRun: undefined });
     void navigate({ to: "/execute/$taskId", params: { taskId: task.id } });
   };
 
@@ -84,6 +90,34 @@ function Review({ task }: { task: Task }) {
         <h1 className="text-2xl font-semibold tracking-tight">ตรวจทาน{def.verb}ก่อนส่ง</h1>
         <p className="mt-1 text-sm text-muted-foreground">ตรวจสอบความถูกต้อง แก้ไขได้ทุกส่วนก่อนส่งให้บอททำงานจริง</p>
       </div>
+
+      {last && (
+        <div
+          role="alert"
+          className={
+            last.status === "failed"
+              ? "mt-6 flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-4"
+              : "mt-6 flex items-start gap-3 rounded-2xl border border-warning/50 bg-warning-soft p-4"
+          }
+        >
+          <AlertTriangle
+            className={last.status === "failed" ? "mt-0.5 size-4 shrink-0 text-destructive" : "mt-0.5 size-4 shrink-0 text-warning"}
+          />
+          <div className="min-w-0 text-sm">
+            {last.status === "failed" ? (
+              <>
+                <p className="font-semibold text-destructive">
+                  ครั้งก่อนขัดข้องที่ขั้นตอน {(last.failedStep ?? 0) + 1}/{def.pipeline.length}: {last.failedLabel}
+                </p>
+                {last.message && <p className="mt-0.5 break-words text-foreground/80">{last.message}</p>}
+              </>
+            ) : (
+              <p className="font-semibold">การส่งงานครั้งก่อนถูกขัดจังหวะ (เช่น รีเฟรชหน้า) ไม่ทราบผลจาก n8n</p>
+            )}
+            <p className="mt-1 text-xs text-muted-foreground">ตรวจสอบข้อมูล แล้วกดยืนยันเพื่อส่งใหม่อีกครั้ง</p>
+          </div>
+        </div>
+      )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[250px_1fr]">
         <aside className="hidden lg:block">
@@ -160,12 +194,27 @@ function Review({ task }: { task: Task }) {
               <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-success" />
               เมื่องานเสร็จ ข้อมูลในงานนี้จะถูกลบจากเบราว์เซอร์ทันที เหลือเพียงสรุปที่ไม่ระบุตัวบุคคลในประวัติ
             </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-secondary px-3 py-2 text-xs">
+              <span className="flex min-w-0 items-center gap-2">
+                <Webhook className="size-3.5 shrink-0" />
+                <span className="truncate">
+                  {n8n.url ? `จะส่งไปที่ n8n · ${webhookHost(n8n.url)}` : "ยังไม่ได้เชื่อม n8n · บอทจะทำงานแบบจำลอง"}
+                </span>
+              </span>
+              <N8nSettingsDialog
+                trigger={
+                  <button type="button" className="font-medium underline-offset-2 hover:underline">
+                    {n8n.url ? "เปลี่ยน" : "ตั้งค่า"}
+                  </button>
+                }
+              />
+            </div>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button asChild variant="outline" size="lg">
                 <Link to="/">บันทึกไว้ทำต่อภายหลัง</Link>
               </Button>
               <Button variant="signal" size="lg" disabled={!confirmed} onClick={submit}>
-                <Rocket /> ยืนยันและส่งให้บอททำงาน
+                <Rocket /> {last ? "ยืนยันและส่งใหม่" : "ยืนยันและส่งให้บอททำงาน"}
               </Button>
             </div>
           </div>

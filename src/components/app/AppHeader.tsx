@@ -18,6 +18,9 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { wipeAll } from "@/lib/session-store";
 
+import { N8nSettingsDialog } from "./N8nSettingsDialog";
+import { RunIndicator } from "./RunIndicator";
+
 export function AppHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-md">
@@ -33,16 +36,18 @@ export function AppHeader() {
         </Link>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <RunIndicator />
+          <N8nSettingsDialog />
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground">
                 <ShieldCheck className="size-3.5 text-success" />
-                <span className="hidden sm:inline">ข้อมูลอยู่ในเบราว์เซอร์นี้เท่านั้น</span>
-                <span className="sm:hidden">ไม่เก็บบนเซิร์ฟเวอร์</span>
+                <span className="hidden lg:inline">ข้อมูลอยู่ในเบราว์เซอร์นี้เท่านั้น</span>
+                <span className="hidden sm:inline lg:hidden">ไม่เก็บบนเซิร์ฟเวอร์</span>
               </span>
             </TooltipTrigger>
             <TooltipContent className="max-w-64 text-xs leading-relaxed">
-              ข้อมูลงานและข้อมูลลูกค้าไม่ถูกส่งไปเก็บบนเซิร์ฟเวอร์ จะถูกลบเมื่อปิดแท็บหรือเมื่องานเสร็จ
+              ข้อมูลงานและข้อมูลลูกค้าไม่ถูกเก็บบนเซิร์ฟเวอร์ของแอปนี้ (เมื่อเชื่อม n8n จะส่งตรงไปที่ n8n ของคุณ) และถูกลบเมื่อปิดแท็บหรือเมื่องานเสร็จ
               ประวัติเก็บไว้เพียงสรุปที่ไม่ระบุตัวบุคคล
             </TooltipContent>
           </Tooltip>
