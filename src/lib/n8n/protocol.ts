@@ -153,6 +153,7 @@ export function statusLabel(s: StepProgress): string {
  */
 export function createJsonSplitter() {
   let buf = "";
+  let text = "";
   return {
     push(chunk: string): unknown[] {
       buf += chunk;
@@ -186,15 +187,23 @@ export function createJsonSplitter() {
             consumed = i + 1;
             start = -1;
           }
-        } else if (depth === 0) consumed = i + 1;
+        } else if (depth === 0) {
+          text += c;
+          consumed = i + 1;
+        }
       }
       buf = buf.slice(start >= 0 ? start : consumed);
       return out;
     },
     /** Leftover non-JSON text (e.g. a plain-text response). */
     rest(): string {
-      const r = buf.trim();
+      const r = (text + buf)
+        .split("\n")
+        .filter((l) => !/^\s*(data|event|id|retry):/.test(l))
+        .join("\n")
+        .trim();
       buf = "";
+      text = "";
       return r;
     },
   };
