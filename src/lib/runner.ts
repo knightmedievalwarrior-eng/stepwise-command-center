@@ -88,7 +88,7 @@ function startN8n(task: RunTask, h: RunHandlers, config: N8nConfig, runId: strin
   const flushText = (force = false) => {
     const parts = textBuf.split("\n");
     textBuf = force ? "" : (parts.pop() ?? "");
-    for (const p of force ? parts : parts) if (p.trim()) log("info", `  ↳ ${p.trim()}`);
+    for (const p of parts) if (p.trim()) log("info", `  ↳ ${p.trim()}`);
   };
 
   const apply = (ev: RunEvent) => {
