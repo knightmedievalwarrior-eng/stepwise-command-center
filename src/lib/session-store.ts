@@ -14,17 +14,28 @@ import { TASKS, type TaskData, type TaskType } from "./tasks/definitions";
 
 export type TaskStatus = "draft" | "ready";
 
+/** Outcome of the latest bot run for a task that is still pending. */
+export interface LastRun {
+  status: "running" | "failed";
+  startedAt: number;
+  /** 0-based pipeline step that failed. */
+  failedStep?: number;
+  failedLabel?: string;
+  message?: string;
+}
+
 export interface Task {
   id: string;
   type: TaskType;
   status: TaskStatus;
   stepIndex: number;
   data: TaskData;
+  lastRun?: LastRun;
   createdAt: number;
   updatedAt: number;
 }
 
-export type HistoryStatus = "success" | "cancelled";
+export type HistoryStatus = "success" | "cancelled" | "failed";
 
 export interface HistoryEntry {
   id: string;
@@ -35,6 +46,10 @@ export interface HistoryEntry {
   startedAt: number;
   finishedAt: number;
   steps: number;
+  /** 0-based step where a failed run stopped. */
+  failedStep?: number;
+  /** "n8n" when a real webhook ran the task, "simulate" for demo mode. */
+  mode?: "n8n" | "simulate";
 }
 
 export interface AppState {
@@ -157,7 +172,13 @@ function makeRef(prefix: string, at: number) {
  * Ends a mission: records a non-personal history entry and destroys the
  * task's working data immediately.
  */
-export function finishTask(id: string, status: HistoryStatus, startedAt: number, steps: number): HistoryEntry | undefined {
+export function finishTask(
+  id: string,
+  status: HistoryStatus,
+  startedAt: number,
+  steps: number,
+  extra: Pick<HistoryEntry, "failedStep" | "mode"> = {},
+): HistoryEntry | undefined {
   const s = getState();
   const task = s.tasks.find((t) => t.id === id);
   if (!task) return undefined;
@@ -172,6 +193,7 @@ export function finishTask(id: string, status: HistoryStatus, startedAt: number,
     startedAt,
     finishedAt,
     steps,
+    ...extra,
   };
   setState({
     tasks: status === "success" ? s.tasks.filter((t) => t.id !== id) : s.tasks,
