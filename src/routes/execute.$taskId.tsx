@@ -97,9 +97,10 @@ function Execution({ run }: { run: LiveRun }) {
   };
 
   const retry = () => {
-    dismissRun(run.taskId);
+    // Clear the failure first so the next render mounts the Launcher (fresh run)
+    // instead of redirecting to review.
     updateTask(run.taskId, { lastRun: undefined });
-    // Launcher on the next render starts a fresh run.
+    dismissRun(run.taskId);
   };
 
   const editData = () => {
