@@ -30,7 +30,7 @@ export interface Task {
   status: TaskStatus;
   stepIndex: number;
   data: TaskData;
-  lastRun?: LastRun;
+  lastRun?: LastRun | undefined;
   createdAt: number;
   updatedAt: number;
 }

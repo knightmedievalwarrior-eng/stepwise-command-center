@@ -18,13 +18,13 @@ export interface LiveRun {
   taskId: string;
   type: TaskType;
   mode: RunMode;
-  target?: string;
+  target?: string | undefined;
   phase: RunPhase;
   progress: StepProgress;
   logs: LogLine[];
   startedAt: number;
   canPause: boolean;
-  entryId?: string;
+  entryId?: string | undefined;
   failure?: { index: number; label: string; message: string };
 }
 
