@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Check, CircleSlash, Clock3, ShieldCheck } from "lucide-react";
+import { ArrowRight, Check, CircleSlash, Clock3, ShieldCheck, X } from "lucide-react";
 
 import { MissingTask } from "@/components/app/TaskGate";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ function DonePage() {
 
   const def = TASKS[entry.type];
   const ok = entry.status === "success";
+  const failed = entry.status === "failed";
   const secs = Math.max(1, Math.round((entry.finishedAt - entry.startedAt) / 1000));
 
   const again = () => {
@@ -55,17 +56,31 @@ function DonePage() {
         <div
           className={cn(
             "mx-auto flex size-20 animate-in zoom-in-50 items-center justify-center rounded-full duration-500",
-            ok ? "bg-success text-success-foreground" : "bg-secondary text-muted-foreground",
+            ok
+              ? "bg-success text-success-foreground"
+              : failed
+                ? "bg-destructive text-destructive-foreground"
+                : "bg-secondary text-muted-foreground",
           )}
         >
-          {ok ? <Check className="size-9" strokeWidth={2.5} /> : <CircleSlash className="size-8" />}
+          {ok ? (
+            <Check className="size-9" strokeWidth={2.5} />
+          ) : failed ? (
+            <X className="size-9" strokeWidth={2.5} />
+          ) : (
+            <CircleSlash className="size-8" />
+          )}
         </div>
-        <p className="eyebrow mt-6">{ok ? "Mission Complete" : "Cancelled"}</p>
+        <p className="eyebrow mt-6">{ok ? "Mission Complete" : failed ? "Failed" : "Cancelled"}</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          {ok ? `${def.title}สำเร็จ` : `${def.title}ถูกยกเลิก`}
+          {ok ? `${def.title}สำเร็จ` : failed ? `${def.title}ไม่สำเร็จ` : `${def.title}ถูกยกเลิก`}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {ok ? "บอทหลังบ้านดำเนินการครบทุกขั้นตอนแล้ว" : "งานถูกหยุดก่อนเสร็จสิ้น ข้อมูลยังอยู่ในงานค้าง"}
+        <p className={cn("mt-2 text-sm", failed ? "text-destructive" : "text-muted-foreground")}>
+          {ok
+            ? "บอทหลังบ้านดำเนินการครบทุกขั้นตอนแล้ว"
+            : failed
+              ? `ขัดข้องที่ขั้นตอน ${(entry.failedStep ?? 0) + 1}/${def.pipeline.length}: ${def.pipeline[entry.failedStep ?? 0] ?? ""}`
+              : "งานถูกหยุดก่อนเสร็จสิ้น ข้อมูลยังอยู่ในงานค้าง"}
         </p>
 
         <div className="surface mt-8 animate-rise text-left">
