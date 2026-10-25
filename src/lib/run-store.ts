@@ -103,6 +103,13 @@ export function launchRun(task: Task): LiveRun {
         const entry = finishTask(task.id, "success", startedAt, def.pipeline.length, { mode });
         patch(task.id, (r) => ({ ...r, phase: "done", entryId: entry?.id }));
         controls.delete(task.id);
+        const onScreen = typeof window !== "undefined" && window.location.pathname === `/execute/${task.id}`;
+        if (!onScreen) {
+          // Nobody is watching the execution screen: forget the run so it doesn't linger.
+          runs.delete(task.id);
+          emit();
+          toast.success(`${def.title}สำเร็จ`, { description: entry?.ref });
+        }
       },
       onError: ({ index, message }) => {
         const label = def.pipeline[index] ?? "";
