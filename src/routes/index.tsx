@@ -205,7 +205,9 @@ function PendingRow({ task: t, run }: { task: Task; run: LiveRun | undefined }) 
   const interrupted = !live && !failure && t.lastRun?.status === "running";
   const total = def.steps.length;
   const done = t.status === "ready" ? total : t.stepIndex;
-  const lastLog = live?.logs.at(-1)?.message.trim();
+  const stepLabel = live ? def.pipeline[live.progress.current] ?? "" : "";
+  const rawLog = live?.logs.at(-1)?.message.trim();
+  const lastLog = rawLog && !rawLog.includes(stepLabel) ? rawLog : undefined;
 
   return (
     <div
@@ -290,7 +292,7 @@ function PendingRow({ task: t, run }: { task: Task; run: LiveRun | undefined }) 
           </div>
           <StepSegments progress={live.progress} labels={def.pipeline} active />
           <p className="truncate text-xs text-muted-foreground">
-            {def.pipeline[live.progress.current]}
+            {stepLabel}
             {lastLog ? <span className="font-mono text-[0.68rem]"> · {lastLog}</span> : null}
           </p>
         </div>
