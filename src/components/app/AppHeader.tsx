@@ -20,6 +20,7 @@ import { wipeAll } from "@/lib/session-store";
 
 import { N8nSettingsDialog } from "./N8nSettingsDialog";
 import { RunIndicator } from "./RunIndicator";
+import { TrialBadge } from "./TrialBadge";
 
 export function AppHeader() {
   return (
@@ -37,6 +38,7 @@ export function AppHeader() {
 
         <div className="ml-auto flex items-center gap-1.5">
           <RunIndicator />
+          <TrialBadge />
           <N8nSettingsDialog />
           <Tooltip>
             <TooltipTrigger asChild>
