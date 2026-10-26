@@ -1,5 +1,7 @@
 import { FileText, ReceiptText, UserPlus, type LucideIcon } from "lucide-react";
 
+import { tx, type Lang, type Text } from "../i18n";
+
 export type TaskType = "quotation" | "customer" | "document";
 
 export type FieldType =
@@ -15,16 +17,16 @@ export type FieldType =
 
 export interface FieldOption {
   value: string;
-  label: string;
+  label: Text;
 }
 
 export interface FieldDef {
   name: string;
-  label: string;
+  label: Text;
   type: FieldType;
   required?: boolean;
-  placeholder?: string;
-  hint?: string;
+  placeholder?: Text | string;
+  hint?: Text;
   options?: FieldOption[];
   /** Occupies half the row on wide screens. */
   half?: boolean;
@@ -32,8 +34,8 @@ export interface FieldDef {
 
 export interface StepDef {
   id: string;
-  title: string;
-  description: string;
+  title: Text;
+  description: Text;
   fields: FieldDef[];
 }
 
@@ -47,17 +49,17 @@ export type TaskData = Record<string, unknown>;
 
 export interface TaskDef {
   type: TaskType;
-  title: string;
-  verb: string;
-  description: string;
+  title: Text;
+  verb: Text;
+  description: Text;
   icon: LucideIcon;
   refPrefix: string;
   steps: StepDef[];
   defaults: () => TaskData;
-  /** Bot pipeline shown on the execution screen. */
-  pipeline: string[];
+  /** Bot pipeline shown on the execution screen. The Thai text is also sent to n8n. */
+  pipeline: Text[];
   /** Non-personal label kept in the usage history after the data is destroyed. */
-  historyLabel: (data: TaskData) => string;
+  historyLabel: (data: TaskData) => Text;
 }
 
 export const VAT_RATE = 0.07;
