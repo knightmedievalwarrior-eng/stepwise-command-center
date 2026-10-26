@@ -1,7 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import { useNavigate } from "@tanstack/react-router";
 import { DefaultChatTransport } from "ai";
-import { ArrowUpRight, CornerDownLeft, RotateCcw } from "lucide-react";
+import { ArrowUpRight, CornerDownLeft, RotateCcw, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -153,6 +153,13 @@ export function CommandBox() {
           </PromptInputFooter>
         </PromptInput>
       </div>
+
+      <p className="flex items-start gap-1.5 px-1 text-xs leading-relaxed text-muted-foreground">
+        <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-success" />
+        ระบบไม่มีการเก็บบันทึกข้อมูลส่วนตัว ประวัติการสั่งงานจะถูกบันทึกไว้ในเบราว์เซอร์ของคุณเท่านั้น
+      </p>
+
+
 
       <div className="flex flex-wrap gap-2">
         {SUGGESTIONS.map((s) => (
