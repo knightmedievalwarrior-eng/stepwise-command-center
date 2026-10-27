@@ -10,6 +10,7 @@
  */
 import { useSyncExternalStore } from "react";
 
+import type { Text } from "./i18n";
 import { TASKS, type TaskData, type TaskType } from "./tasks/definitions";
 
 export type TaskStatus = "draft" | "ready";
@@ -41,7 +42,8 @@ export interface HistoryEntry {
   id: string;
   type: TaskType;
   ref: string;
-  label: string;
+  /** Both languages for new entries; older entries hold a Thai string. */
+  label: string | Text;
   status: HistoryStatus;
   startedAt: number;
   finishedAt: number;

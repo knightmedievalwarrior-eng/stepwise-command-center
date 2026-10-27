@@ -6,6 +6,7 @@
 import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
+import { tt, tx } from "./i18n";
 import { getN8nConfig } from "./n8n/config";
 import { initialProgress, type StepProgress } from "./n8n/protocol";
 import { startRun, type LogLine, type RunControl, type RunMode } from "./runner";
@@ -108,11 +109,11 @@ export function launchRun(task: Task): LiveRun {
           // Nobody is watching the execution screen: forget the run so it doesn't linger.
           runs.delete(task.id);
           emit();
-          toast.success(`${def.title}สำเร็จ`, { description: entry?.ref });
+          toast.success(tt(`${def.title.th}สำเร็จ`, `${def.title.en} done`), { description: entry?.ref });
         }
       },
       onError: ({ index, message }) => {
-        const label = def.pipeline[index] ?? "";
+        const label = tx(def.pipeline[index]);
         updateTask(task.id, {
           lastRun: { status: "failed", startedAt, failedStep: index, failedLabel: label, message },
         });
@@ -124,7 +125,13 @@ export function launchRun(task: Task): LiveRun {
           failure: { index, label, message },
         }));
         controls.delete(task.id);
-        toast.error(`${def.title} ขัดข้องที่ขั้นตอน ${index + 1}/${def.pipeline.length}`, { description: label });
+        toast.error(
+          tt(
+            `${def.title.th} ขัดข้องที่ขั้นตอน ${index + 1}/${def.pipeline.length}`,
+            `${def.title.en} failed at step ${index + 1}/${def.pipeline.length}`,
+          ),
+          { description: label },
+        );
       },
     },
     { mode, config, runId: uid() },
