@@ -1,6 +1,6 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
-import { th } from "date-fns/locale";
+import { enGB, th } from "date-fns/locale";
 import {
   AlertTriangle,
   ArrowRight,
@@ -18,6 +18,7 @@ import { CommandBox } from "@/components/app/CommandBox";
 import { StepSegments } from "@/components/app/StepSegments";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "@/lib/i18n";
 import { percent, statusLabel } from "@/lib/n8n/protocol";
 import { useLiveRuns, type LiveRun } from "@/lib/run-store";
 import {
@@ -52,18 +53,19 @@ export const Route = createFileRoute("/")({
   component: CommandCenter,
 });
 
-function greeting(hour: number) {
-  if (hour < 5) return "ดึกแล้วนะ";
-  if (hour < 12) return "สวัสดีตอนเช้า";
-  if (hour < 17) return "สวัสดีตอนบ่าย";
-  return "สวัสดีตอนเย็น";
+function greeting(hour: number, t: (th: string, en: string) => string) {
+  if (hour < 5) return t("ดึกแล้วนะ", "Working late");
+  if (hour < 12) return t("สวัสดีตอนเช้า", "Good morning");
+  if (hour < 17) return t("สวัสดีตอนบ่าย", "Good afternoon");
+  return t("สวัสดีตอนเย็น", "Good evening");
 }
 
 function CommandCenter() {
   const hydrated = useHydrated();
+  const { t, locale } = useT();
   const now = new Date();
   const dateLabel = hydrated
-    ? now.toLocaleDateString("th-TH", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    ? now.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })
     : " ";
 
   return (
@@ -73,8 +75,8 @@ function CommandCenter() {
         <section className="mx-auto max-w-3xl animate-rise">
           <p className="eyebrow min-h-4">{dateLabel}</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-[2.6rem] sm:leading-[1.15]">
-            {hydrated ? greeting(now.getHours()) : "สวัสดี"}{" "}
-            <span className="text-muted-foreground">วันนี้ให้ช่วยงานอะไรดี?</span>
+            {hydrated ? greeting(now.getHours(), t) : t("สวัสดี", "Hello")}{" "}
+            <span className="text-muted-foreground">{t("วันนี้ให้ช่วยงานอะไรดี?", "what shall we get done today?")}</span>
           </h1>
           <div className="mt-7">
             <CommandBox />
@@ -94,13 +96,14 @@ function CommandCenter() {
 
 function QuickActions() {
   const navigate = useNavigate();
+  const { t, tr } = useT();
   const start = (type: TaskType) => {
     const t = createTask(type);
     void navigate({ to: "/wizard/$taskId", params: { taskId: t.id } });
   };
   return (
     <section className="mt-14">
-      <SectionTitle eyebrow="Quick Actions" title="เริ่มงานด่วน" />
+      <SectionTitle eyebrow="Quick Actions" title={t("เริ่มงานด่วน", "Quick start")} />
       <div className="grid gap-3 sm:grid-cols-3">
         {TASK_LIST.map((def, i) => (
           <button
@@ -117,10 +120,10 @@ function QuickActions() {
               <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-signal" />
             </div>
             <div>
-              <h3 className="font-semibold">{def.title}</h3>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{def.description}</p>
+              <h3 className="font-semibold">{tr(def.title)}</h3>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{tr(def.description)}</p>
             </div>
-            <span className="font-mono text-[0.7rem] text-muted-foreground">{def.steps.length} ขั้นตอน</span>
+            <span className="font-mono text-[0.7rem] text-muted-foreground">{def.steps.length} {t("ขั้นตอน", "steps")}</span>
           </button>
         ))}
       </div>
@@ -140,22 +143,20 @@ function SectionTitle({ eyebrow, title, action }: { eyebrow: string; title: stri
   );
 }
 
-function taskSubtitle(t: Task) {
+function taskSubtitle(t: Task, fallback: string) {
   const d = t.data;
-  return readString(d, "customerName") || readString(d, "name") || readString(d, "docNo") || "ยังไม่ได้ระบุ";
+  return readString(d, "customerName") || readString(d, "name") || readString(d, "docNo") || fallback;
 }
 
 interface FailureInfo {
   index: number;
-  label: string;
   message: string;
 }
 
 function failureOf(t: Task, run: LiveRun | undefined): FailureInfo | undefined {
   if (run?.phase === "error" && run.failure) return run.failure;
   if (t.lastRun?.status === "failed") {
-    const index = t.lastRun.failedStep ?? 0;
-    return { index, label: t.lastRun.failedLabel ?? TASKS[t.type].pipeline[index] ?? "", message: t.lastRun.message ?? "" };
+    return { index: t.lastRun.failedStep ?? 0, message: t.lastRun.message ?? "" };
   }
   return undefined;
 }
@@ -164,6 +165,7 @@ const isLive = (r: LiveRun | undefined): r is LiveRun => !!r && (r.phase === "ru
 
 function PendingTasks() {
   const hydrated = useHydrated();
+  const { t } = useT();
   const { tasks } = useAppState();
   const runs = useLiveRuns();
   const runOf = new Map(runs.map((r) => [r.taskId, r]));
@@ -173,11 +175,11 @@ function PendingTasks() {
     <section className="lg:col-span-3">
       <SectionTitle
         eyebrow="Pending"
-        title={`งานค้าง${hydrated && tasks.length ? ` (${tasks.length})` : ""}`}
+        title={`${t("งานค้าง", "Pending")}${hydrated && tasks.length ? ` (${tasks.length})` : ""}`}
         action={
           hydrated && failedCount > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-destructive px-2.5 py-1 text-xs font-medium text-destructive-foreground">
-              <AlertTriangle className="size-3" /> ขัดข้อง {failedCount} งาน
+              <AlertTriangle className="size-3" /> {t(`ขัดข้อง ${failedCount} งาน`, `${failedCount} failed`)}
             </span>
           ) : null
         }
@@ -189,7 +191,14 @@ function PendingTasks() {
             <Skeleton className="h-12 w-full" />
           </div>
         ) : tasks.length === 0 ? (
-          <EmptyState icon={Inbox} title="ไม่มีงานค้าง" body="งานที่เริ่มแล้วแต่ยังไม่ส่งจะแสดงที่นี่ และถูกลบอัตโนมัติเมื่อปิดแท็บ" />
+          <EmptyState
+            icon={Inbox}
+            title={t("ไม่มีงานค้าง", "Nothing pending")}
+            body={t(
+              "งานที่เริ่มแล้วแต่ยังไม่ส่งจะแสดงที่นี่ และถูกลบอัตโนมัติเมื่อปิดแท็บ",
+              "Tasks you've started but not sent show up here, and are deleted automatically when you close the tab",
+            )}
+          />
         ) : (
           tasks.map((t) => <PendingRow key={t.id} task={t} run={runOf.get(t.id)} />)
         )}
@@ -200,12 +209,13 @@ function PendingTasks() {
 
 function PendingRow({ task: t, run }: { task: Task; run: LiveRun | undefined }) {
   const def = TASKS[t.type];
+  const { t: tl, tr, lang } = useT();
   const live = isLive(run) ? run : undefined;
   const failure = live ? undefined : failureOf(t, run);
   const interrupted = !live && !failure && t.lastRun?.status === "running";
   const total = def.steps.length;
   const done = t.status === "ready" ? total : t.stepIndex;
-  const stepLabel = live ? def.pipeline[live.progress.current] ?? "" : "";
+  const stepLabel = live ? tr(def.pipeline[live.progress.current]) : "";
   const rawLog = live?.logs.at(-1)?.message.trim();
   const lastLog = rawLog && !rawLog.includes(stepLabel) ? rawLog : undefined;
 
@@ -230,23 +240,23 @@ function PendingRow({ task: t, run }: { task: Task; run: LiveRun | undefined }) 
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="truncate text-sm font-medium">{def.title}</p>
+            <p className="truncate text-sm font-medium">{tr(def.title)}</p>
             {live ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-signal px-2 py-0.5 text-[0.65rem] font-medium text-signal-foreground">
                 <span className="size-1.5 animate-pulse-dot rounded-full bg-signal-foreground" />
-                {live.phase === "paused" ? "หยุดชั่วคราว" : "บอทกำลังทำงาน"}
+                {live.phase === "paused" ? tl("หยุดชั่วคราว", "Paused") : tl("บอทกำลังทำงาน", "Bot running")}
               </span>
             ) : failure ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-destructive px-2 py-0.5 text-[0.65rem] font-medium text-destructive-foreground">
-                <AlertTriangle className="size-3" /> ขัดข้อง
+                <AlertTriangle className="size-3" /> {tl("ขัดข้อง", "Failed")}
               </span>
             ) : interrupted ? (
-              <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[0.65rem] font-medium text-foreground">ถูกขัดจังหวะ</span>
+              <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[0.65rem] font-medium text-foreground">{tl("ถูกขัดจังหวะ", "Interrupted")}</span>
             ) : t.status === "ready" ? (
-              <span className="rounded-full bg-success-soft px-2 py-0.5 text-[0.65rem] font-medium text-success">รอยืนยัน</span>
+              <span className="rounded-full bg-success-soft px-2 py-0.5 text-[0.65rem] font-medium text-success">{tl("รอยืนยัน", "Ready to confirm")}</span>
             ) : null}
           </div>
-          <p className="truncate text-xs text-muted-foreground">{taskSubtitle(t)}</p>
+          <p className="truncate text-xs text-muted-foreground">{taskSubtitle(t, tl("ยังไม่ได้ระบุ", "Not named yet"))}</p>
           {!live && !failure && (
             <div className="mt-2 flex items-center gap-2">
               <div className="h-1 w-24 overflow-hidden rounded-full bg-secondary">
@@ -259,22 +269,22 @@ function PendingRow({ task: t, run }: { task: Task; run: LiveRun | undefined }) 
           )}
         </div>
         {!live && (
-          <Button variant="ghost" size="icon-sm" aria-label="ลบงาน" onClick={() => deleteTask(t.id)}>
+          <Button variant="ghost" size="icon-sm" aria-label={tl("ลบงาน", "Delete task")} onClick={() => deleteTask(t.id)}>
             <Trash2 />
           </Button>
         )}
         <Button asChild size="sm" variant={failure ? "destructive" : "soft"}>
           {live ? (
             <Link to="/execute/$taskId" params={{ taskId: t.id }}>
-              ดูสถานะ
+              {tl("ดูสถานะ", "View status")}
             </Link>
           ) : failure || interrupted || t.status === "ready" ? (
             <Link to="/review/$taskId" params={{ taskId: t.id }}>
-              {failure || interrupted ? "แก้ไข/ส่งใหม่" : "ตรวจทาน"}
+              {failure || interrupted ? tl("แก้ไข/ส่งใหม่", "Fix / resend") : tl("ตรวจทาน", "Review")}
             </Link>
           ) : (
             <Link to="/wizard/$taskId" params={{ taskId: t.id }}>
-              ทำต่อ
+              {tl("ทำต่อ", "Continue")}
             </Link>
           )}
         </Button>
@@ -285,12 +295,12 @@ function PendingRow({ task: t, run }: { task: Task; run: LiveRun | undefined }) 
           <div className="flex items-baseline justify-between gap-3 text-xs">
             <span className="font-medium text-foreground">
               {live.phase === "paused"
-                ? `หยุดชั่วคราว (${Math.min(live.progress.current + 1, live.progress.total)}/${live.progress.total})`
-                : statusLabel(live.progress)}
+                ? `${tl("หยุดชั่วคราว", "Paused")} (${Math.min(live.progress.current + 1, live.progress.total)}/${live.progress.total})`
+                : statusLabel(live.progress, lang)}
             </span>
             <span className="font-mono text-[0.65rem] text-muted-foreground">{percent(live.progress)}%</span>
           </div>
-          <StepSegments progress={live.progress} labels={def.pipeline} active />
+          <StepSegments progress={live.progress} labels={def.pipeline.map(tr)} active />
           <p className="truncate text-xs text-muted-foreground">
             {stepLabel}
             {lastLog ? <span className="font-mono text-[0.68rem]"> · {lastLog}</span> : null}
@@ -306,7 +316,7 @@ function PendingRow({ task: t, run }: { task: Task; run: LiveRun | undefined }) 
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
           <div className="min-w-0 flex-1 text-xs">
             <p className="font-semibold text-destructive">
-              ขัดข้องที่ขั้นตอน {failure.index + 1}/{def.pipeline.length}: {failure.label}
+              {tl("ขัดข้องที่ขั้นตอน", "Failed at step")} {failure.index + 1}/{def.pipeline.length}: {tr(def.pipeline[failure.index])}
             </p>
             {failure.message && <p className="mt-0.5 line-clamp-2 break-words text-foreground/80">{failure.message}</p>}
             {run?.phase === "error" && (
@@ -315,7 +325,7 @@ function PendingRow({ task: t, run }: { task: Task; run: LiveRun | undefined }) 
                 params={{ taskId: t.id }}
                 className="mt-1 inline-block font-medium text-destructive underline-offset-2 hover:underline"
               >
-                ดู Log การทำงาน
+                {tl("ดู Log การทำงาน", "View bot log")}
               </Link>
             )}
           </div>
@@ -327,6 +337,7 @@ function PendingRow({ task: t, run }: { task: Task; run: LiveRun | undefined }) 
 
 function BotHistory() {
   const hydrated = useHydrated();
+  const { t, tr } = useT();
   const { history, tasks } = useAppState();
   const liveRuns = useLiveRuns().filter(isLive);
 
@@ -334,11 +345,11 @@ function BotHistory() {
     <section className="lg:col-span-2">
       <SectionTitle
         eyebrow="Bot Log"
-        title="ประวัติบอทหลังบ้าน"
+        title={t("ประวัติบอทหลังบ้าน", "Bot history")}
         action={
           hydrated && history.length > 0 ? (
             <Button variant="ghost" size="sm" onClick={clearHistory}>
-              ล้างประวัติ
+              {t("ล้างประวัติ", "Clear history")}
             </Button>
           ) : null
         }
@@ -350,12 +361,19 @@ function BotHistory() {
             <Skeleton className="h-10 w-full" />
           </div>
         ) : history.length === 0 && liveRuns.length === 0 ? (
-          <EmptyState icon={Bot} title="ยังไม่มีประวัติ" body="เมื่อบอททำงานเสร็จ สรุปผล (ไม่มีข้อมูลส่วนบุคคล) จะถูกบันทึกไว้ที่นี่" />
+          <EmptyState
+            icon={Bot}
+            title={t("ยังไม่มีประวัติ", "No history yet")}
+            body={t(
+              "เมื่อบอททำงานเสร็จ สรุปผล (ไม่มีข้อมูลส่วนบุคคล) จะถูกบันทึกไว้ที่นี่",
+              "When the bot finishes, a summary (with no personal details) is saved here",
+            )}
+          />
         ) : (
           <ol className="max-h-[480px] overflow-y-auto p-2">
             {liveRuns.map((r) => {
               const task = tasks.find((t) => t.id === r.taskId);
-              return <LiveHistoryRow key={`live-${r.taskId}`} run={r} label={task ? TASKS[r.type].historyLabel(task.data) : ""} />;
+              return <LiveHistoryRow key={`live-${r.taskId}`} run={r} label={task ? tr(TASKS[r.type].historyLabel(task.data)) : ""} />;
             })}
             {history.map((h) => (
               <HistoryRow key={h.id} entry={h} />
@@ -369,6 +387,7 @@ function BotHistory() {
 
 function LiveHistoryRow({ run, label }: { run: LiveRun; label: string }) {
   const def = TASKS[run.type];
+  const { t, tr, lang } = useT();
   const lastLog = run.logs.at(-1)?.message.trim();
   return (
     <li data-testid="live-history-row" className="animate-rise">
@@ -380,20 +399,20 @@ function LiveHistoryRow({ run, label }: { run: LiveRun; label: string }) {
         <Loader2 className={cn("mt-0.5 size-4 shrink-0 text-signal", run.phase === "running" && "animate-spin")} />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-sm font-medium">
-            {def.verb}
+            {tr(def.verb)}
             <span className="rounded-full bg-signal px-1.5 py-px font-mono text-[0.6rem] uppercase tracking-wide text-signal-foreground">
               live
             </span>
           </p>
           {label && <p className="truncate text-xs text-muted-foreground">{label}</p>}
           <p className="mt-1.5 text-xs font-medium" aria-live="polite">
-            {run.phase === "paused" ? "หยุดชั่วคราว" : statusLabel(run.progress)}
+            {run.phase === "paused" ? t("หยุดชั่วคราว", "Paused") : statusLabel(run.progress, lang)}
           </p>
-          <StepSegments progress={run.progress} labels={def.pipeline} active className="mt-1.5" />
+          <StepSegments progress={run.progress} labels={def.pipeline.map(tr)} active className="mt-1.5" />
           {lastLog && <p className="mt-1.5 truncate font-mono text-[0.65rem] text-muted-foreground">{lastLog}</p>}
         </div>
         <span className="shrink-0 font-mono text-[0.65rem] text-muted-foreground">
-          {run.mode === "n8n" ? "n8n" : "จำลอง"}
+          {run.mode === "n8n" ? "n8n" : t("จำลอง", "demo")}
         </span>
       </Link>
     </li>
@@ -402,6 +421,7 @@ function LiveHistoryRow({ run, label }: { run: LiveRun; label: string }) {
 
 function HistoryRow({ entry }: { entry: HistoryEntry }) {
   const def = TASKS[entry.type];
+  const { t, tr, lang } = useT();
   const ok = entry.status === "success";
   const failed = entry.status === "failed";
   const secs = Math.max(1, Math.round((entry.finishedAt - entry.startedAt) / 1000));
@@ -425,17 +445,17 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
         )}
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium">
-            {def.verb} {ok ? "สำเร็จ" : failed ? "ไม่สำเร็จ" : "ถูกยกเลิก"}
+            {tr(def.verb)} {ok ? t("สำเร็จ", "done") : failed ? t("ไม่สำเร็จ", "failed") : t("ถูกยกเลิก", "cancelled")}
             {failed && (
               <span className="rounded-full bg-destructive px-2 py-0.5 text-[0.62rem] font-medium text-destructive-foreground">
-                ขัดข้องขั้นตอน {failedStep + 1}/{def.pipeline.length}
+                {t("ขัดข้องขั้นตอน", "Failed step")} {failedStep + 1}/{def.pipeline.length}
               </span>
             )}
           </p>
           {failed ? (
-            <p className="truncate text-xs text-destructive">{def.pipeline[failedStep]}</p>
+            <p className="truncate text-xs text-destructive">{tr(def.pipeline[failedStep])}</p>
           ) : (
-            <p className="truncate text-xs text-muted-foreground">{entry.label}</p>
+            <p className="truncate text-xs text-muted-foreground">{tr(entry.label)}</p>
           )}
           <p className="mt-1 flex items-center gap-2 font-mono text-[0.65rem] text-muted-foreground">
             <span>{entry.ref}</span>
@@ -443,11 +463,11 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
               <Clock3 className="size-3" />
               {secs}s
             </span>
-            {entry.mode && <span>{entry.mode === "n8n" ? "n8n" : "จำลอง"}</span>}
+            {entry.mode && <span>{entry.mode === "n8n" ? "n8n" : t("จำลอง", "demo")}</span>}
           </p>
         </div>
         <span className="shrink-0 text-[0.7rem] text-muted-foreground">
-          {formatDistanceToNow(entry.finishedAt, { addSuffix: true, locale: th })}
+          {formatDistanceToNow(entry.finishedAt, { addSuffix: true, locale: lang === "en" ? enGB : th })}
         </span>
       </Link>
     </li>
