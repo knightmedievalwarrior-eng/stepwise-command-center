@@ -1,5 +1,6 @@
 import { Check } from "lucide-react";
 
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { StepDef } from "@/lib/tasks/definitions";
 
@@ -12,8 +13,12 @@ interface Props {
   extraLabel?: string;
 }
 
-export function StepRail({ steps, current, reachable, onSelect, extraLabel = "ตรวจทาน & ยืนยัน" }: Props) {
-  const all = [...steps.map((s) => ({ title: s.title, description: s.description })), { title: extraLabel, description: "ตรวจข้อมูลก่อนส่ง" }];
+export function StepRail({ steps, current, reachable, onSelect, extraLabel }: Props) {
+  const { t, tr } = useT();
+  const all = [
+    ...steps.map((s) => ({ title: tr(s.title), description: tr(s.description) })),
+    { title: extraLabel ?? t("ตรวจทาน & ยืนยัน", "Review & confirm"), description: t("ตรวจข้อมูลก่อนส่ง", "Check before sending") },
+  ];
   return (
     <ol className="relative space-y-1">
       {all.map((s, i) => {

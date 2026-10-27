@@ -6,6 +6,7 @@ import { FieldInput } from "@/components/app/FieldInput";
 import { StepDots, StepRail } from "@/components/app/StepRail";
 import { TaskGate } from "@/components/app/TaskGate";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 import { updateTask, type Task } from "@/lib/session-store";
 import { TASKS, validateStep } from "@/lib/tasks/definitions";
 
@@ -43,6 +44,7 @@ function useAutosaveIndicator() {
 function Wizard({ task }: { task: Task }) {
   const navigate = useNavigate();
   const def = TASKS[task.type];
+  const { t, tr, lang, locale } = useT();
   const total = def.steps.length;
   const index = Math.min(task.stepIndex, total - 1);
   const step = def.steps[index]!;
@@ -70,7 +72,7 @@ function Wizard({ task }: { task: Task }) {
 
   const next = (e?: FormEvent) => {
     e?.preventDefault();
-    const errs = validateStep(step, task.data);
+    const errs = validateStep(step, task.data, lang);
     if (Object.keys(errs).length) {
       setErrors(errs);
       return;
@@ -81,7 +83,7 @@ function Wizard({ task }: { task: Task }) {
     }
     // Final step: validate everything, then move to review.
     for (let i = 0; i < total; i++) {
-      const stepErrs = validateStep(def.steps[i]!, task.data);
+      const stepErrs = validateStep(def.steps[i]!, task.data, lang);
       if (Object.keys(stepErrs).length) {
         goTo(i);
         setTimeout(() => setErrors(stepErrs), 0);
@@ -93,10 +95,10 @@ function Wizard({ task }: { task: Task }) {
   };
 
   const savedLabel = autosave.saving
-    ? "กำลังบันทึก…"
+    ? t("กำลังบันทึก…", "Saving…")
     : autosave.at
-      ? `บันทึกอัตโนมัติ ${new Date(autosave.at).toLocaleTimeString("th-TH")}`
-      : "บันทึกอัตโนมัติเปิดอยู่";
+      ? `${t("บันทึกอัตโนมัติ", "Autosaved")} ${new Date(autosave.at).toLocaleTimeString(locale)}`
+      : t("บันทึกอัตโนมัติเปิดอยู่", "Autosave is on");
 
   return (
     <div className="mx-auto max-w-5xl px-4 pb-24 pt-6 sm:px-6 sm:pt-10">
@@ -122,7 +124,7 @@ function Wizard({ task }: { task: Task }) {
         </span>
         <div>
           <p className="eyebrow">Wizard Task Runner</p>
-          <h1 className="text-2xl font-semibold tracking-tight">{def.title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{tr(def.title)}</h1>
         </div>
       </div>
 
@@ -131,7 +133,7 @@ function Wizard({ task }: { task: Task }) {
           <StepRail steps={def.steps} current={index} reachable={reachable} onSelect={goTo} />
           <p className="mt-6 flex items-start gap-2 px-3 text-xs leading-relaxed text-muted-foreground">
             <CloudOff className="mt-0.5 size-3.5 shrink-0" />
-            ข้อมูลบันทึกในแท็บนี้เท่านั้น ปิดแท็บแล้วข้อมูลจะหายไป
+            {t("ข้อมูลบันทึกในแท็บนี้เท่านั้น ปิดแท็บแล้วข้อมูลจะหายไป", "Saved in this tab only — closing the tab erases it")}
           </p>
         </aside>
 
@@ -139,9 +141,9 @@ function Wizard({ task }: { task: Task }) {
           <div className="mb-4 space-y-2 lg:hidden">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>
-                ขั้นที่ {index + 1} จาก {total + 1}
+                {t(`ขั้นที่ ${index + 1} จาก ${total + 1}`, `Step ${index + 1} of ${total + 1}`)}
               </span>
-              <span>{step.title}</span>
+              <span>{tr(step.title)}</span>
             </div>
             <StepDots total={total + 1} current={index} />
           </div>
@@ -149,12 +151,12 @@ function Wizard({ task }: { task: Task }) {
           <form onSubmit={next} className="surface animate-rise" key={step.id} noValidate>
             <div className="border-b border-border px-5 py-5 sm:px-7">
               <p className="font-mono text-xs text-signal">
-                ขั้นตอนที่ {String(index + 1).padStart(2, "0")}
+                {t("ขั้นตอนที่", "Step")} {String(index + 1).padStart(2, "0")}
               </p>
               <h2 ref={headingRef} tabIndex={-1} className="mt-1 text-xl font-semibold tracking-tight outline-none">
-                {step.title}
+                {tr(step.title)}
               </h2>
-              <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{tr(step.description)}</p>
             </div>
 
             <div className="grid gap-5 px-5 py-6 sm:grid-cols-2 sm:px-7">
@@ -165,10 +167,10 @@ function Wizard({ task }: { task: Task }) {
 
             <div className="flex items-center justify-between gap-3 border-t border-border bg-secondary/40 px-5 py-4 sm:px-7">
               <Button type="button" variant="outline" disabled={index === 0} onClick={() => goTo(index - 1)}>
-                <ArrowLeft /> ย้อนกลับ
+                <ArrowLeft /> {t("ย้อนกลับ", "Back")}
               </Button>
               <Button type="submit" variant={index === total - 1 ? "signal" : "default"}>
-                {index === total - 1 ? "ตรวจทานข้อมูล" : "ถัดไป"} <ArrowRight />
+                {index === total - 1 ? t("ตรวจทานข้อมูล", "Review details") : t("ถัดไป", "Next")} <ArrowRight />
               </Button>
             </div>
           </form>

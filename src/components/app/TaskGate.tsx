@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "@/lib/i18n";
 import { useHydrated, useTask, type Task } from "@/lib/session-store";
 
 /** Waits for browser storage, then renders children with the task or a friendly empty state. */
@@ -26,17 +27,21 @@ export function TaskGate({ taskId, children }: { taskId: string; children: (task
 }
 
 export function MissingTask() {
+  const { t } = useT();
   return (
     <div className="mx-auto flex max-w-md flex-col items-center px-4 py-24 text-center">
       <div className="flex size-12 items-center justify-center rounded-full bg-secondary">
         <FileQuestion className="size-5 text-muted-foreground" />
       </div>
-      <h1 className="mt-5 text-xl font-semibold">ไม่พบงานนี้</h1>
+      <h1 className="mt-5 text-xl font-semibold">{t("ไม่พบงานนี้", "Task not found")}</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        งานอาจเสร็จสิ้นไปแล้ว หรือข้อมูลถูกลบเมื่อปิดแท็บ เพื่อความเป็นส่วนตัวของลูกค้า
+        {t(
+          "งานอาจเสร็จสิ้นไปแล้ว หรือข้อมูลถูกลบเมื่อปิดแท็บ เพื่อความเป็นส่วนตัวของลูกค้า",
+          "It may have finished already, or its data was deleted when a tab closed — to protect customer privacy",
+        )}
       </p>
       <Button asChild className="mt-6">
-        <Link to="/">กลับ Command Center</Link>
+        <Link to="/">{t("กลับ Command Center", "Back to Command Center")}</Link>
       </Button>
     </div>
   );
