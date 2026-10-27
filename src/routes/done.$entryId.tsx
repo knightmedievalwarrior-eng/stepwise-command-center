@@ -4,6 +4,7 @@ import { ArrowRight, Check, CircleSlash, Clock3, ShieldCheck, X } from "lucide-r
 import { MissingTask } from "@/components/app/TaskGate";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "@/lib/i18n";
 import { createTask, useAppState, useHydrated } from "@/lib/session-store";
 import { TASKS } from "@/lib/tasks/definitions";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ function DonePage() {
   const hydrated = useHydrated();
   const { history } = useAppState();
   const navigate = useNavigate();
+  const { t, tr, locale } = useT();
   const entry = history.find((h) => h.id === entryId);
 
   if (!hydrated) {
@@ -73,28 +75,32 @@ function DonePage() {
         </div>
         <p className="eyebrow mt-6">{ok ? "Mission Complete" : failed ? "Failed" : "Cancelled"}</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          {ok ? `${def.title}สำเร็จ` : failed ? `${def.title}ไม่สำเร็จ` : `${def.title}ถูกยกเลิก`}
+          {ok
+            ? t(`${def.title.th}สำเร็จ`, `${def.title.en} done`)
+            : failed
+              ? t(`${def.title.th}ไม่สำเร็จ`, `${def.title.en} failed`)
+              : t(`${def.title.th}ถูกยกเลิก`, `${def.title.en} cancelled`)}
         </h1>
         <p className={cn("mt-2 text-sm", failed ? "text-destructive" : "text-muted-foreground")}>
           {ok
-            ? "บอทหลังบ้านดำเนินการครบทุกขั้นตอนแล้ว"
+            ? t("บอทหลังบ้านดำเนินการครบทุกขั้นตอนแล้ว", "The bot completed every step")
             : failed
-              ? `ขัดข้องที่ขั้นตอน ${(entry.failedStep ?? 0) + 1}/${def.pipeline.length}: ${def.pipeline[entry.failedStep ?? 0] ?? ""}`
-              : "งานถูกหยุดก่อนเสร็จสิ้น ข้อมูลยังอยู่ในงานค้าง"}
+              ? `${t("ขัดข้องที่ขั้นตอน", "Failed at step")} ${(entry.failedStep ?? 0) + 1}/${def.pipeline.length}: ${tr(def.pipeline[entry.failedStep ?? 0])}`
+              : t("งานถูกหยุดก่อนเสร็จสิ้น ข้อมูลยังอยู่ในงานค้าง", "Stopped before finishing — the task is still in Pending")}
         </p>
 
         <div className="surface mt-8 animate-rise text-left">
           <dl className="divide-y divide-border text-sm">
             <div className="flex justify-between px-5 py-3.5">
-              <dt className="text-muted-foreground">เลขอ้างอิง</dt>
+              <dt className="text-muted-foreground">{t("เลขอ้างอิง", "Reference")}</dt>
               <dd className="font-mono font-medium">{entry.ref}</dd>
             </div>
             <div className="flex justify-between gap-4 px-5 py-3.5">
-              <dt className="text-muted-foreground">สรุป</dt>
-              <dd className="text-right font-medium">{entry.label}</dd>
+              <dt className="text-muted-foreground">{t("สรุป", "Summary")}</dt>
+              <dd className="text-right font-medium">{tr(entry.label)}</dd>
             </div>
             <div className="flex justify-between px-5 py-3.5">
-              <dt className="text-muted-foreground">ขั้นตอนที่ทำ</dt>
+              <dt className="text-muted-foreground">{t("ขั้นตอนที่ทำ", "Steps run")}</dt>
               <dd className="font-mono">
                 {entry.steps}/{def.pipeline.length}
               </dd>
@@ -102,12 +108,12 @@ function DonePage() {
             <div className="flex justify-between px-5 py-3.5">
               <dt className="text-muted-foreground">ใช้เวลา</dt>
               <dd className="inline-flex items-center gap-1.5 font-mono">
-                <Clock3 className="size-3.5 text-muted-foreground" /> {secs} วินาที
+                <Clock3 className="size-3.5 text-muted-foreground" /> {secs} {t("วินาที", "s")}
               </dd>
             </div>
             <div className="flex justify-between px-5 py-3.5">
-              <dt className="text-muted-foreground">เวลาเสร็จ</dt>
-              <dd>{new Date(entry.finishedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}</dd>
+              <dt className="text-muted-foreground">{t("เวลาเสร็จ", "Finished")}</dt>
+              <dd>{new Date(entry.finishedAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })}</dd>
             </div>
           </dl>
         </div>
@@ -115,16 +121,16 @@ function DonePage() {
         {ok && (
           <p className="mx-auto mt-5 flex max-w-sm items-start justify-center gap-2 text-left text-xs leading-relaxed text-muted-foreground">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-success" />
-            ข้อมูลลูกค้าในงานนี้ถูกลบออกจากเบราว์เซอร์แล้ว ประวัติเก็บเพียงสรุปด้านบน
+            {t("ข้อมูลลูกค้าในงานนี้ถูกลบออกจากเบราว์เซอร์แล้ว ประวัติเก็บเพียงสรุปด้านบน", "Customer details for this task were deleted from the browser — history keeps only the summary above")}
           </p>
         )}
 
         <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:justify-center">
           <Button asChild size="lg">
-            <Link to="/">กลับ Command Center</Link>
+            <Link to="/">{t("กลับ Command Center", "Back to Command Center")}</Link>
           </Button>
           <Button size="lg" variant="outline" onClick={again}>
-            {def.title}อีกครั้ง <ArrowRight />
+            {t(`${def.title.th}อีกครั้ง`, `${def.title.en} again`)} <ArrowRight />
           </Button>
         </div>
       </div>

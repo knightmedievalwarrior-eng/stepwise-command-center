@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
   calcQuotation,
@@ -27,6 +28,7 @@ interface Props {
 }
 
 export function FieldInput({ field, data, error, onChange }: Props) {
+  const { t, tr } = useT();
   const id = `f-${field.name}`;
   const wide = !field.half || field.type === "textarea" || field.type === "items";
 
@@ -43,7 +45,7 @@ export function FieldInput({ field, data, error, onChange }: Props) {
     return (
       <div className="flex items-center justify-between rounded-xl border border-border bg-secondary/50 px-4 py-3 sm:col-span-2">
         <Label htmlFor={id} className="text-sm font-medium">
-          {field.label}
+          {tr(field.label)}
         </Label>
         <Switch id={id} checked={readBool(data, field.name)} onCheckedChange={(v) => onChange(field.name, v)} />
       </div>
@@ -56,18 +58,18 @@ export function FieldInput({ field, data, error, onChange }: Props) {
   return (
     <div className={cn("space-y-1.5", wide && "sm:col-span-2")}>
       <Label htmlFor={id} className="text-sm font-medium">
-        {field.label}
+        {tr(field.label)}
         {field.required && <span className="ml-0.5 text-signal">*</span>}
       </Label>
       {field.type === "select" ? (
         <Select value={value} onValueChange={(v) => onChange(field.name, v)}>
           <SelectTrigger id={id} aria-invalid={invalid} className="h-11 bg-card">
-            <SelectValue placeholder="เลือก…" />
+            <SelectValue placeholder={t("เลือก…", "Select…")} />
           </SelectTrigger>
           <SelectContent>
             {field.options?.map((o) => (
               <SelectItem key={o.value} value={o.value}>
-                {o.label}
+                {tr(o.label)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -76,7 +78,7 @@ export function FieldInput({ field, data, error, onChange }: Props) {
         <Textarea
           id={id}
           value={value}
-          placeholder={field.placeholder}
+          placeholder={tr(field.placeholder)}
           aria-invalid={invalid}
           rows={3}
           className="bg-card"
@@ -88,7 +90,7 @@ export function FieldInput({ field, data, error, onChange }: Props) {
           type={field.type === "number" ? "text" : field.type}
           inputMode={field.type === "number" ? "decimal" : field.type === "tel" ? "tel" : undefined}
           value={value}
-          placeholder={field.placeholder}
+          placeholder={tr(field.placeholder)}
           aria-invalid={invalid}
           className="h-11 bg-card"
           onChange={(e) => onChange(field.name, e.target.value)}
@@ -97,13 +99,14 @@ export function FieldInput({ field, data, error, onChange }: Props) {
       {error ? (
         <p className="text-xs text-destructive">{error}</p>
       ) : field.hint ? (
-        <p className="text-xs text-muted-foreground">{field.hint}</p>
+        <p className="text-xs text-muted-foreground">{tr(field.hint)}</p>
       ) : null}
     </div>
   );
 }
 
 function ItemsEditor({ data, onChange }: { data: TaskData; onChange: (items: QuoteItem[]) => void }) {
+  const { t } = useT();
   const items = readItems(data);
   const totals = calcQuotation(items, readNumber(data, "discount"), readBool(data, "vat"));
   const update = (i: number, patch: Partial<QuoteItem>) =>
@@ -112,10 +115,10 @@ function ItemsEditor({ data, onChange }: { data: TaskData; onChange: (items: Quo
   return (
     <div className="space-y-3">
       <div className="hidden grid-cols-[1fr_80px_120px_110px_32px] gap-2 px-1 text-xs text-muted-foreground sm:grid">
-        <span>รายการ</span>
-        <span>จำนวน</span>
-        <span>ราคา/หน่วย</span>
-        <span className="text-right">รวม</span>
+        <span>{t("รายการ", "Item")}</span>
+        <span>{t("จำนวน", "Qty")}</span>
+        <span>{t("ราคา/หน่วย", "Unit price")}</span>
+        <span className="text-right">{t("รวม", "Total")}</span>
         <span />
       </div>
       {items.map((it, i) => (
@@ -124,14 +127,14 @@ function ItemsEditor({ data, onChange }: { data: TaskData; onChange: (items: Quo
           className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-secondary/40 p-3 sm:grid-cols-[1fr_80px_120px_110px_32px] sm:items-center sm:border-0 sm:bg-transparent sm:p-0"
         >
           <Input
-            aria-label={`ชื่อรายการที่ ${i + 1}`}
+            aria-label={t(`ชื่อรายการที่ ${i + 1}`, `Item ${i + 1} name`)}
             value={it.name}
-            placeholder="ชื่อสินค้า / บริการ"
+            placeholder={t("ชื่อสินค้า / บริการ", "Product / service")}
             className="col-span-2 h-10 bg-card sm:col-span-1"
             onChange={(e) => update(i, { name: e.target.value })}
           />
           <Input
-            aria-label="จำนวน"
+            aria-label={t("จำนวน", "Quantity")}
             inputMode="numeric"
             value={it.qty ? String(it.qty) : ""}
             placeholder="1"
@@ -139,7 +142,7 @@ function ItemsEditor({ data, onChange }: { data: TaskData; onChange: (items: Quo
             onChange={(e) => update(i, { qty: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })}
           />
           <Input
-            aria-label="ราคาต่อหน่วย"
+            aria-label={t("ราคาต่อหน่วย", "Unit price")}
             inputMode="decimal"
             value={it.price ? String(it.price) : ""}
             placeholder="0.00"
@@ -153,7 +156,7 @@ function ItemsEditor({ data, onChange }: { data: TaskData; onChange: (items: Quo
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="ลบรายการ"
+            aria-label={t("ลบรายการ", "Remove item")}
             disabled={items.length <= 1}
             className="justify-self-end"
             onClick={() => onChange(items.filter((_, idx) => idx !== i))}
@@ -168,10 +171,10 @@ function ItemsEditor({ data, onChange }: { data: TaskData; onChange: (items: Quo
         size="sm"
         onClick={() => onChange([...items, { name: "", qty: 1, price: 0 }])}
       >
-        <Plus /> เพิ่มรายการ
+        <Plus /> {t("เพิ่มรายการ", "Add item")}
       </Button>
       <div className="flex items-center justify-between border-t border-dashed border-border pt-3 text-sm">
-        <span className="text-muted-foreground">ยอดรวมก่อนส่วนลด</span>
+        <span className="text-muted-foreground">{t("ยอดรวมก่อนส่วนลด", "Subtotal before discount")}</span>
         <span className="font-mono font-medium tabular-nums">{formatBaht(totals.subtotal)}</span>
       </div>
     </div>

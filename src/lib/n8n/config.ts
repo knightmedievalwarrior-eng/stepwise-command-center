@@ -58,20 +58,22 @@ export function useN8nConfig(): N8nConfig {
 }
 
 /** Returns a Thai error message, or null when the URL can be used from the browser. */
-export function validateWebhookUrl(raw: string): string | null {
+export function validateWebhookUrl(raw: string, lang: "th" | "en" = "th"): string | null {
+  const m = (th: string, en: string) => (lang === "en" ? en : th);
   const value = raw.trim();
-  if (!value) return "กรุณาใส่ Webhook URL";
+  if (!value) return m("กรุณาใส่ Webhook URL", "Enter a webhook URL");
   let u: URL;
   try {
     u = new URL(value);
   } catch {
-    return "รูปแบบ URL ไม่ถูกต้อง";
+    return m("รูปแบบ URL ไม่ถูกต้อง", "Invalid URL");
   }
   const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
   if (u.protocol === "https:") return null;
   if (u.protocol === "http:" && local) return null;
-  if (u.protocol === "http:") return "ต้องเป็น https:// (เบราว์เซอร์บล็อก http จากหน้าเว็บที่ปลอดภัย)";
-  return "ต้องขึ้นต้นด้วย https://";
+  if (u.protocol === "http:")
+    return m("ต้องเป็น https:// (เบราว์เซอร์บล็อก http จากหน้าเว็บที่ปลอดภัย)", "Must be https:// (browsers block http from secure pages)");
+  return m("ต้องขึ้นต้นด้วย https://", "Must start with https://");
 }
 
 export function webhookHost(url: string): string {

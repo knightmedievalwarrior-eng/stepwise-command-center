@@ -1,6 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 
+import { useT } from "@/lib/i18n";
 import { percent, statusLabel } from "@/lib/n8n/protocol";
 import { useLiveRuns } from "@/lib/run-store";
 
@@ -8,6 +9,7 @@ import { useLiveRuns } from "@/lib/run-store";
 export function RunIndicator() {
   const runs = useLiveRuns().filter((r) => r.phase === "running" || r.phase === "paused");
   const { pathname } = useLocation();
+  const { t, lang } = useT();
   const run = runs[0];
   if (!run || pathname === `/execute/${run.taskId}`) return null;
   const p = run.progress;
@@ -16,10 +18,10 @@ export function RunIndicator() {
       to="/execute/$taskId"
       params={{ taskId: run.taskId }}
       className="flex items-center gap-2 rounded-full border border-signal/40 bg-signal-soft px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-signal"
-      aria-label={`ดูสถานะบอท ${statusLabel(p)}`}
+      aria-label={`${t("ดูสถานะบอท", "View bot status")} ${statusLabel(p, lang)}`}
     >
       <Loader2 className="size-3.5 animate-spin text-signal" />
-      <span className="hidden sm:inline">{statusLabel(p)}</span>
+      <span className="hidden sm:inline">{statusLabel(p, lang)}</span>
       <span className="font-mono sm:hidden">
         {Math.min(p.current + 1, p.total)}/{p.total}
       </span>

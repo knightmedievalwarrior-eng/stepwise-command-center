@@ -1,3 +1,5 @@
+import { tt } from "../i18n";
+
 /**
  * Turns whatever n8n sends back into step progress.
  *
@@ -67,7 +69,7 @@ export function normalize(value: unknown, labels: string[] = []): RunEvent[] {
   const type = str(value["type"]);
   if (type && ["begin", "item", "end", "error"].includes(type) && ("content" in value || "metadata" in value || type !== "item")) {
     if (type === "error") {
-      return [{ kind: "error", message: str(value["content"]) ?? messageOf(value) ?? "n8n แจ้งข้อผิดพลาด" }];
+      return [{ kind: "error", message: str(value["content"]) ?? messageOf(value) ?? tt("n8n แจ้งข้อผิดพลาด", "n8n reported an error") }];
     }
     if (type !== "item") return [];
     const content = value["content"];
@@ -97,7 +99,7 @@ export function normalize(value: unknown, labels: string[] = []): RunEvent[] {
   const hasStep = index !== undefined;
 
   if (ERROR.has(rawStatus) || failedFlag || (!rawStatus && typeof value["error"] === "string")) {
-    events.push({ kind: "error", index, message: message ?? "n8n แจ้งว่าขั้นตอนนี้ล้มเหลว" });
+    events.push({ kind: "error", index, message: message ?? tt("n8n แจ้งว่าขั้นตอนนี้ล้มเหลว", "n8n reported this step failed") });
   } else if (hasStep && SUCCESS.has(rawStatus)) {
     events.push({ kind: "step", index, status: "success", message });
   } else if (hasStep && (RUNNING.has(rawStatus) || !rawStatus)) {
@@ -140,10 +142,12 @@ export function percent(s: StepProgress): number {
 }
 
 /** "กำลังดำเนินการ (2/5)…" */
-export function statusLabel(s: StepProgress): string {
-  if (s.failed) return `ขัดข้องที่ขั้นตอน ${s.failed.index + 1}/${s.total}`;
-  if (s.finished) return `เสร็จสมบูรณ์ (${s.total}/${s.total})`;
-  return `กำลังดำเนินการ (${Math.min(s.current + 1, s.total)}/${s.total})…`;
+export function statusLabel(s: StepProgress, lang: "th" | "en" = "th"): string {
+  const en = lang === "en";
+  if (s.failed) return en ? `Failed at step ${s.failed.index + 1}/${s.total}` : `ขัดข้องที่ขั้นตอน ${s.failed.index + 1}/${s.total}`;
+  if (s.finished) return en ? `Completed (${s.total}/${s.total})` : `เสร็จสมบูรณ์ (${s.total}/${s.total})`;
+  const n = `${Math.min(s.current + 1, s.total)}/${s.total}`;
+  return en ? `In progress (${n})…` : `กำลังดำเนินการ (${n})…`;
 }
 
 /**
