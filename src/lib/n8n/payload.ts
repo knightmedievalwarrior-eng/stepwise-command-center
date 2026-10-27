@@ -15,6 +15,7 @@ import {
   type TaskData,
   type TaskType,
 } from "../tasks/definitions";
+import { tx } from "../i18n";
 
 export interface PayloadField {
   key: string;
@@ -53,7 +54,7 @@ function fieldDisplay(f: FieldDef, data: TaskData): string {
   }
   const raw = readString(data, f.name).trim();
   if (!raw) return "";
-  if (f.type === "select") return f.options?.find((o) => o.value === raw)?.label ?? raw;
+  if (f.type === "select") return tx(f.options?.find((o) => o.value === raw)?.label ?? raw, "th");
   if (f.name === "amount") return formatBaht(readNumber(data, f.name));
   return raw;
 }
@@ -64,14 +65,14 @@ export function buildCommand(type: TaskType, data: TaskData): string {
     const who = readString(data, "customerName").trim();
     const items = readItems(data);
     const t = calcQuotation(items, readNumber(data, "discount"), readBool(data, "vat"));
-    return `${def.title}${who ? `ให้ ${who}` : ""} · ${items.length} รายการ · ยอดสุทธิ ${formatBaht(t.total)}`;
+    return `${def.title.th}${who ? `ให้ ${who}` : ""} · ${items.length} รายการ · ยอดสุทธิ ${formatBaht(t.total)}`;
   }
   if (type === "customer") {
     const name = readString(data, "name").trim();
-    return `${def.title}${name ? ` ${name}` : ""}`;
+    return `${def.title.th}${name ? ` ${name}` : ""}`;
   }
   const docNo = readString(data, "docNo").trim();
-  return `${def.title} ${docTypeLabel(readString(data, "docType"))}${docNo ? ` เลขที่ ${docNo}` : ""} · ${formatBaht(readNumber(data, "amount"))}`;
+  return `${def.title.th} ${docTypeLabel(readString(data, "docType")).th}${docNo ? ` เลขที่ ${docNo}` : ""} · ${formatBaht(readNumber(data, "amount"))}`;
 }
 
 export function buildPayload(
@@ -83,8 +84,8 @@ export function buildPayload(
   const fields: PayloadField[] = def.steps.flatMap((s) =>
     s.fields.map((f) => ({
       key: f.name,
-      label: f.label,
-      step: s.title,
+      label: f.label.th,
+      step: s.title.th,
       value: task.data[f.name] ?? null,
       display: fieldDisplay(f, task.data),
     })),
@@ -100,12 +101,12 @@ export function buildPayload(
     runId,
     taskId: task.id,
     taskType: task.type,
-    title: def.title,
+    title: def.title.th,
     command: buildCommand(task.type, task.data),
     summary,
     locale: "th-TH",
     sentAt: now.toISOString(),
-    steps: def.pipeline.map((label, i) => ({ step: i + 1, label })),
+    steps: def.pipeline.map((label, i) => ({ step: i + 1, label: label.th })),
     fields,
     data: task.data,
   };

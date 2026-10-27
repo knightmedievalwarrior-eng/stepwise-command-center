@@ -6,6 +6,7 @@
  *    n8n webhook and reads step events from the (optionally streamed) reply.
  *  - "simulate": local demo used while no webhook is configured.
  */
+import { tt, tx } from "./i18n";
 import { buildPayload } from "./n8n/payload";
 import type { N8nConfig } from "./n8n/config";
 import {
@@ -19,6 +20,7 @@ import {
 import {
   TASKS,
   calcQuotation,
+  pipelineTh,
   docTypeLabel,
   formatBaht,
   readBool,
@@ -77,7 +79,8 @@ function makeLogger(h: RunHandlers) {
 /* ------------------------------------------------------------------ */
 
 function startN8n(task: RunTask, h: RunHandlers, config: N8nConfig, runId: string): RunControl {
-  const labels = TASKS[task.type].pipeline;
+  const wire = pipelineTh(task.type);
+  const labels = TASKS[task.type].pipeline.map((p) => tx(p));
   const total = labels.length;
   const log = makeLogger(h);
   const abort = new AbortController();
@@ -112,7 +115,7 @@ function startN8n(task: RunTask, h: RunHandlers, config: N8nConfig, runId: strin
     }
     if (ev.kind === "error" && progress.failed) {
       const i = progress.failed.index;
-      log("error", `✗ ขั้นตอน ${i + 1}/${total} ${labels[i]} — ${ev.message}`);
+      log("error", `✗ ${tt("ขั้นตอน", "Step")} ${i + 1}/${total} ${labels[i]} — ${ev.message}`);
     }
     if (ev.kind === "done" && ev.message) log("info", `  ↳ ${ev.message}`);
     if (before !== progress) h.onProgress(progress);
@@ -124,7 +127,7 @@ function startN8n(task: RunTask, h: RunHandlers, config: N8nConfig, runId: strin
   };
 
   void (async () => {
-    log("system", `ส่งคำสั่งไป n8n · ${safeHost(config.url)} · ${total} ขั้นตอน`);
+    log("system", tt(`ส่งคำสั่งไป n8n · ${safeHost(config.url)} · ${total} ขั้นตอน`, `Sending to n8n · ${safeHost(config.url)} · ${total} steps`));
     h.onProgress(progress);
     log("info", `[1/${total}] ${labels[0]}…`);
 
@@ -144,14 +147,19 @@ function startN8n(task: RunTask, h: RunHandlers, config: N8nConfig, runId: strin
       });
     } catch {
       if (cancelled) return;
-      return fail("เชื่อมต่อ n8n ไม่ได้ — ตรวจสอบ URL, เปิดใช้งาน workflow และตั้ง Allowed Origins (CORS) ใน Webhook node");
+      return fail(
+        tt(
+          "เชื่อมต่อ n8n ไม่ได้ — ตรวจสอบ URL, เปิดใช้งาน workflow และตั้ง Allowed Origins (CORS) ใน Webhook node",
+          "Can't reach n8n — check the URL, activate the workflow and set Allowed Origins (CORS) on the Webhook node",
+        ),
+      );
     }
     if (cancelled) return;
-    log("system", `n8n ตอบกลับ HTTP ${res.status}`);
+    log("system", tt(`n8n ตอบกลับ HTTP ${res.status}`, `n8n replied HTTP ${res.status}`));
 
     const splitter = createJsonSplitter();
     const handleChunk = (chunk: string) => {
-      for (const value of splitter.push(chunk)) normalize(value, labels).forEach(apply);
+      for (const value of splitter.push(chunk)) normalize(value, wire).forEach(apply);
     };
 
     try {
@@ -170,7 +178,7 @@ function startN8n(task: RunTask, h: RunHandlers, config: N8nConfig, runId: strin
       }
     } catch {
       if (cancelled) return;
-      return fail("การเชื่อมต่อกับ n8n ขาดระหว่างทำงาน");
+      return fail(tt("การเชื่อมต่อกับ n8n ขาดระหว่างทำงาน", "Lost the connection to n8n mid-run"));
     }
     flushText(true);
     const rest = splitter.rest();
@@ -181,22 +189,22 @@ function startN8n(task: RunTask, h: RunHandlers, config: N8nConfig, runId: strin
       const detail = rest ? ` · ${rest.slice(0, 200)}` : "";
       const reason =
         res.status === 401 || res.status === 403
-          ? "n8n ปฏิเสธสิทธิ์ (ตรวจสอบ Header Auth)"
+          ? tt("n8n ปฏิเสธสิทธิ์ (ตรวจสอบ Header Auth)", "n8n denied access (check Header Auth)")
           : res.status === 404
-            ? "ไม่พบ Webhook (workflow ยังไม่ได้ Publish หรือ URL ผิด)"
-            : `n8n ตอบกลับข้อผิดพลาด HTTP ${res.status}`;
+            ? tt("ไม่พบ Webhook (workflow ยังไม่ได้ Publish หรือ URL ผิด)", "Webhook not found (workflow not published or wrong URL)")
+            : tt(`n8n ตอบกลับข้อผิดพลาด HTTP ${res.status}`, `n8n returned error HTTP ${res.status}`);
       return fail(reason + detail);
     }
 
     if (rest) log("info", `  ↳ ${rest.slice(0, 300)}`);
     if (!progress.finished) {
       if (progress.completed === 0) {
-        log("warn", "n8n ไม่ได้ส่งสถานะรายขั้นตอน — ถือว่าสำเร็จเมื่อรับคำสั่งแล้ว");
+        log("warn", tt("n8n ไม่ได้ส่งสถานะรายขั้นตอน — ถือว่าสำเร็จเมื่อรับคำสั่งแล้ว", "n8n sent no step updates — treating the accepted job as done"));
       }
       for (let i = progress.completed; i < total; i++) apply({ kind: "step", index: i, status: "success" });
       apply({ kind: "done" });
     }
-    log("system", "ภารกิจเสร็จสมบูรณ์ · ลบข้อมูลชั่วคราวออกจากเบราว์เซอร์");
+    log("system", tt("ภารกิจเสร็จสมบูรณ์ · ลบข้อมูลชั่วคราวออกจากเบราว์เซอร์", "Mission complete · temporary data removed from this browser"));
     h.onDone();
   })();
 
@@ -228,31 +236,41 @@ function detailsFor(type: TaskType, step: number, data: TaskData): string[] {
     const items = readItems(data);
     const t = calcQuotation(items, readNumber(data, "discount"), readBool(data, "vat"));
     return [
-      [`พบ ${items.length} รายการ ข้อมูลครบถ้วน`],
-      [`ยอดก่อนส่วนลด ${formatBaht(t.subtotal)}`, `VAT ${formatBaht(t.vat)} · ยอดสุทธิ ${formatBaht(t.total)}`],
-      ["จองเลขที่เอกสารสำเร็จ"],
-      [`ยืนราคา ${readNumber(data, "validDays") || 30} วัน`, "เรนเดอร์เทมเพลตเสร็จสิ้น"],
-      ["ส่งเข้าระบบสำเร็จ (จำลอง)"],
+      [tt(`พบ ${items.length} รายการ ข้อมูลครบถ้วน`, `${items.length} item(s) found, details complete`)],
+      [
+        tt(`ยอดก่อนส่วนลด ${formatBaht(t.subtotal)}`, `Subtotal ${formatBaht(t.subtotal)}`),
+        tt(`VAT ${formatBaht(t.vat)} · ยอดสุทธิ ${formatBaht(t.total)}`, `VAT ${formatBaht(t.vat)} · Total ${formatBaht(t.total)}`),
+      ],
+      [tt("จองเลขที่เอกสารสำเร็จ", "Document number reserved")],
+      [
+        tt(`ยืนราคา ${readNumber(data, "validDays") || 30} วัน`, `Valid for ${readNumber(data, "validDays") || 30} days`),
+        tt("เรนเดอร์เทมเพลตเสร็จสิ้น", "Template rendered"),
+      ],
+      [tt("ส่งเข้าระบบสำเร็จ (จำลอง)", "Submitted (simulated)")],
     ][step] ?? [];
   }
   if (type === "customer") {
     return [
-      [readString(data, "email") ? "เบอร์โทรและอีเมลถูกต้อง" : "เบอร์โทรถูกต้อง · ไม่มีอีเมล"],
-      ["ไม่พบข้อมูลซ้ำ"],
-      ["สร้างรหัสลูกค้าใหม่"],
-      ["บันทึกสำเร็จ (จำลอง)"],
+      [
+        readString(data, "email")
+          ? tt("เบอร์โทรและอีเมลถูกต้อง", "Phone and email look good")
+          : tt("เบอร์โทรถูกต้อง · ไม่มีอีเมล", "Phone looks good · no email"),
+      ],
+      [tt("ไม่พบข้อมูลซ้ำ", "No duplicates found")],
+      [tt("สร้างรหัสลูกค้าใหม่", "New customer code created")],
+      [tt("บันทึกสำเร็จ (จำลอง)", "Saved (simulated)")],
     ][step] ?? [];
   }
   return [
-    [`${docTypeLabel(readString(data, "docType"))} เลขที่ถูกต้อง`],
-    ["จับคู่คู่ค้าสำเร็จ"],
-    [`ลงบัญชี ${formatBaht(readNumber(data, "amount"))}`],
-    ["จัดเก็บสำเร็จ (จำลอง)"],
+    [tt(`${tx(docTypeLabel(readString(data, "docType")), "th")} เลขที่ถูกต้อง`, `${tx(docTypeLabel(readString(data, "docType")), "en")} number is valid`)],
+    [tt("จับคู่คู่ค้าสำเร็จ", "Partner matched")],
+    [tt(`ลงบัญชี ${formatBaht(readNumber(data, "amount"))}`, `Posted ${formatBaht(readNumber(data, "amount"))}`)],
+    [tt("จัดเก็บสำเร็จ (จำลอง)", "Stored (simulated)")],
   ][step] ?? [];
 }
 
 function startSimulation(task: RunTask, h: RunHandlers, speed: number): RunControl {
-  const pipeline = TASKS[task.type].pipeline;
+  const pipeline = TASKS[task.type].pipeline.map((p) => tx(p));
   const total = pipeline.length;
   const log = makeLogger(h);
   let progress = initialProgress(total);
@@ -266,7 +284,7 @@ function startSimulation(task: RunTask, h: RunHandlers, speed: number): RunContr
 
   type Ev = { delay: number; run: () => void };
   const events: Ev[] = [];
-  events.push({ delay: 200, run: () => log("system", `โหมดจำลอง (ยังไม่ได้ตั้งค่า n8n) · ${total} ขั้นตอน`) });
+  events.push({ delay: 200, run: () => log("system", tt(`โหมดจำลอง (ยังไม่ได้ตั้งค่า n8n) · ${total} ขั้นตอน`, `Demo mode (n8n not set up) · ${total} steps`)) });
   pipeline.forEach((label, i) => {
     events.push({
       delay: 350,
@@ -290,7 +308,7 @@ function startSimulation(task: RunTask, h: RunHandlers, speed: number): RunContr
     delay: 300,
     run: () => {
       step({ kind: "done" });
-      log("system", "ภารกิจเสร็จสมบูรณ์ · ลบข้อมูลชั่วคราวออกจากเบราว์เซอร์");
+      log("system", tt("ภารกิจเสร็จสมบูรณ์ · ลบข้อมูลชั่วคราวออกจากเบราว์เซอร์", "Mission complete · temporary data removed from this browser"));
       h.onDone();
     },
   });
@@ -316,12 +334,12 @@ function startSimulation(task: RunTask, h: RunHandlers, speed: number): RunContr
       if (paused || cancelled) return;
       paused = true;
       if (timer) clearTimeout(timer);
-      log("warn", "หยุดชั่วคราวโดยผู้ใช้");
+      log("warn", tt("หยุดชั่วคราวโดยผู้ใช้", "Paused by user"));
     },
     resume: () => {
       if (!paused || cancelled) return;
       paused = false;
-      log("system", "ทำงานต่อ");
+      log("system", tt("ทำงานต่อ", "Resumed"));
       tick();
     },
     cancel: () => {
